@@ -55,11 +55,13 @@ try:
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
 
-    # 한글 폰트 등록 시도 (Windows 기준 malgun.ttf, 없으면 Helvetica 사용)
     KOREAN_FONT_NAME = "MalgunGothic"
+    FONT_PATH = "font/malgun.ttf"
+    
     try:
-        pdfmetrics.registerFont(TTFont(KOREAN_FONT_NAME, "malgun.ttf"))
-    except Exception:
+        pdfmetrics.registerFont(TTFont(KOREAN_FONT_NAME, FONT_PATH))
+    except Exception as e:
+        print("폰트 로딩 실패:", e)
         KOREAN_FONT_NAME = "Helvetica"
 
     REPORTLAB_AVAILABLE = True
