@@ -686,7 +686,7 @@ if menu == "📦 입고 조회":
         # 각 열 컬럼 찾기
         col_req_no   = pick_col(df_in, "L", ["요청번호"])
         col_part     = pick_col(df_in, "M", ["품번"])
-        col_name     = pick_col(df_in, "N", ["품명"])
+        col_name     = pick_col(df_in, "O", ["품명"])
         col_req_qty  = pick_col(df_in, "P", ["요청수량"])
         col_erp_out  = pick_col(df_in, "Q", ["ERP불출수량", "불출수량"])
         col_real_in  = pick_col(df_in, "R", ["현장실물입고"])
