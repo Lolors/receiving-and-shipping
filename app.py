@@ -462,14 +462,25 @@ def recalc_return_expectation(df_return, aggs):
 # PDF 생성 함수
 # -----------------------------
 if REPORTLAB_AVAILABLE:
-    def generate_pdf(df_export: pd.DataFrame, uploaded_image=None) -> bytes:
+    def generate_pdf(
+        df_export: pd.DataFrame,
+        uploaded_image=None,
+        pasted_text=None
+    ) -> bytes:
         """
-        PDF를 ANSI 인코딩으로 저장하고,
-        제목과 표의 내용을 모두 왼쪽 정렬로 출력한다.
-        필요 시 클립보드에서 붙여넣은 이미지를 PDF 상단에 추가한다.
+        - 제목 / 표 모두 왼쪽 정렬
+        - 붙여넣은 텍스트가 있으면 제목 아래에 출력
+        - 붙여넣은 이미지(base64) 있으면 그 아래에 출력
         """
         import io
-        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
+        from reportlab.platypus import (
+            SimpleDocTemplate,
+            Table,
+            TableStyle,
+            Paragraph,
+            Spacer,
+            Image,
+        )
         from reportlab.lib.pagesizes import A4, landscape
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
         from reportlab.lib import colors
@@ -495,6 +506,15 @@ if REPORTLAB_AVAILABLE:
             alignment=0,   # LEFT
         )
 
+        text_style = ParagraphStyle(
+            "TextStyle",
+            parent=styles["Normal"],
+            fontName=KOREAN_FONT_NAME,
+            fontSize=10,
+            leading=14,
+            alignment=0,   # LEFT
+        )
+
         table_style = TableStyle(
             [
                 ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
@@ -515,6 +535,11 @@ if REPORTLAB_AVAILABLE:
 
         story.append(Paragraph(title_text, title_style))
         story.append(Spacer(1, 12))
+
+        # 붙여넣은 텍스트가 있으면 제목 아래에 출력
+        if pasted_text:
+            story.append(Paragraph(pasted_text.replace("\n", "<br/>"), text_style))
+            story.append(Spacer(1, 12))
 
         # 클립보드 이미지가 있을 경우 PDF 삽입
         if uploaded_image:
@@ -538,20 +563,18 @@ if REPORTLAB_AVAILABLE:
 
         doc.build(story)
 
-        # ANSI 인코딩 처리
+        # 그냥 reportlab이 만든 raw PDF bytes 그대로 반환 (따로 ANSI 재인코딩 X)
         pdf_bytes = buffer.getvalue()
-        try:
-            pdf_ansi = pdf_bytes.decode("latin-1").encode("latin-1")
-        except UnicodeDecodeError:
-            pdf_ansi = pdf_bytes
-
         buffer.close()
-        return pdf_ansi
+        return pdf_bytes
 
 else:
-    def generate_pdf(df_export: pd.DataFrame, uploaded_image=None) -> bytes:
+    def generate_pdf(
+        df_export: pd.DataFrame,
+        uploaded_image=None,
+        pasted_text=None
+    ) -> bytes:
         raise RuntimeError("reportlab 패키지가 설치되어 있지 않습니다.")
-
 
 # -----------------------------
 # 메인 화면
@@ -1485,35 +1508,45 @@ if menu == "↩️ 환입 관리":
 
         # PDF 받기 버튼 (최종 CSV용 데이터 기준)
         if REPORTLAB_AVAILABLE and not csv_export_df.empty:
-            # 먼저 스크린샷 입력창 노출
-            st.markdown("### 📎 PDF에 넣을 스크린샷을 붙여넣기(Ctrl+V) 하세요")
 
-            clipboard_img_pdf = st.text_area(
-                "스크린샷 붙여넣기",
-                height=150,
-                key="clipboard_image_box_pdf",
-                placeholder="여기에 스크린샷을 Ctrl+V로 붙여넣으세요."
+            st.markdown("### 📎 PDF에 넣을 스크린샷 또는 텍스트를 붙여넣기(Ctrl+V) 하세요")
+
+            clipboard_raw = st.text_area(
+                "붙여넣기 입력",
+                height=200,
+                key="clipboard_mixed_input",
+                placeholder="여기에 스크린샷 또는 텍스트를 Ctrl+V로 붙여넣으세요."
             )
 
             uploaded_image = None
-            if clipboard_img_pdf:
+            pasted_text = None
+
+            if clipboard_raw:
                 import re
                 import base64
                 from io import BytesIO
 
+                # 📌 이미지(base64)인지 확인
                 match = re.search(
                     r"data:image/(png|jpeg|jpg);base64,([A-Za-z0-9+/=]+)",
-                    clipboard_img_pdf,
+                    clipboard_raw
                 )
+
                 if match:
+                    # 이미지를 base64 → BytesIO 변환
                     img_data = match.group(2)
                     uploaded_image = BytesIO(base64.b64decode(img_data))
                 else:
-                    st.warning("유효한 이미지(base64)를 찾지 못했습니다.")
+                    # 이미지가 아니면 일반 텍스트로 처리
+                    pasted_text = clipboard_raw
 
-            # 🔥 이제 PDF 생성 버튼을 누르면 uploaded_image가 존재한 상태로 실행됨
+            # ---------------------
+            # PDF 생성 버튼
+            # ---------------------
             if st.button("📄 PDF 받기"):
-                pdf_bytes = generate_pdf(csv_export_df, uploaded_image)
+
+                pdf_bytes = generate_pdf(csv_export_df, uploaded_image, pasted_text)
+
                 st.download_button(
                     "PDF 다운로드",
                     data=pdf_bytes,
