@@ -1138,6 +1138,18 @@ if menu == "↩️ 환입 관리":
                         option_labels.append(label)
                         option_map[label] = (suju_val, jisi_val)
 
+                    selected_label = st.selectbox(
+                        "👇 이 중 하나를 선택하면 아래 수주번호/지시번호가 자동으로 채워집니다.",
+                        ["선택 안 함"] + option_labels,
+                        key="return_suju_autofill",
+                    )
+
+                    if selected_label != "선택 안 함":
+                        sel_suju, sel_jisi = option_map[selected_label]
+                        # 아래 입력칸에 자동 반영
+                        st.session_state["return_suju_no"] = sel_suju
+                        if sel_jisi:
+                            st.session_state["return_jisi"] = sel_jisi
 
     
     # ----- 입력 1줄 (수주번호, 지시번호, 생산공정, 종료조건) -----
