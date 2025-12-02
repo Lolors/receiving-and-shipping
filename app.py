@@ -1286,7 +1286,6 @@ if menu == "↩️ 환입 관리":
             else:
                 df_bom_fin_uniq = df_bom_finished.drop_duplicates()
 
-            # ✅ 기본값: 모두 선택(True)
             bom_component_df = pd.DataFrame(
                 {
                     "선택": True,
@@ -1311,15 +1310,9 @@ if menu == "↩️ 환입 관리":
                 key="bom_component_editor",
             )
 
-            # ✅ NaN 방지 + bool 강제
-            if "선택" in bom_component_df.columns:
-                bom_component_df["선택"] = (
-                    bom_component_df["선택"].fillna(False).astype(bool)
-                )
-
     # ----- 환입 데이터 불러오기 버튼 -----
     if st.button(
-        "✅ 환입 데이터 불러오기 (선택된 자재를 환입 예상재고에 반영)",
+        "✅ 환입 데이터 불러오기",
         key="btn_return_load",
     ):
         if not suju_no:
@@ -1329,14 +1322,12 @@ if menu == "↩️ 환입 관리":
         elif bom_component_df.empty:
             st.error("BOM 자재 목록이 없습니다.")
         else:
-            # ✅ 선택된 행만 필터링
-            selected_rows = bom_component_df[bom_component_df["선택"]].copy()
-
+            selected_rows = bom_component_df[bom_component_df["선택"] == True].copy()
             if selected_rows.empty:
-                st.warning("선택된 자재가 없습니다. 최소 1개 이상 선택해주세요.")
+                st.warning("선택된 자재가 없습니다. 최소 1개 선택해주세요.")
             else:
                 new_rows = []
-                for _, row in selected_rows.iterrows():  # 🔥 여기 중요: selected_rows
+                for _, row in selected_rows.iterrows():
                     part = row["품번"]
                     name = row["품명"]
                     unit = row["단위수량"]
@@ -1373,7 +1364,7 @@ if menu == "↩️ 환입 관리":
                 ).reset_index(drop=True)
                 st.session_state["환입관리"] = df_return
 
-                # 집계 최초 1회 생성
+                # 집계가 아직 없으면 여기서 한 번만 계산
                 if st.session_state["aggregates"] is None:
                     st.session_state["aggregates"] = build_aggregates(
                         df_in_raw,
@@ -1385,9 +1376,24 @@ if menu == "↩️ 환입 관리":
 
                 aggs = st.session_state["aggregates"]
 
-                # 환입 예상재고 계산
+                # 집계 사용해서 환입 예상재고 계산
                 df_full = recalc_return_expectation(df_return, aggs)
                 st.session_state["환입재고예상"] = df_full
+
+                # ===== ERP재고 직접 매칭 패치 =====
+                stock_part_col = pick_col(df_stock_raw, "D", ["품번"])
+                stock_qty_col  = pick_col(df_stock_raw, "N", ["실재고수량"])
+
+                if stock_part_col and stock_qty_col:
+                    stock_map = dict(
+                        zip(
+                            df_stock_raw[stock_part_col].astype(str),
+                            df_stock_raw[stock_qty_col].apply(safe_num)
+                        )
+                    )
+                    df_full["ERP재고"] = df_full["품번"].astype(str).map(stock_map).fillna(0)
+                else:
+                    st.warning("재고 시트에서 품번(D) 또는 실재고수량(N) 컬럼을 찾을 수 없습니다.")
 
                 st.success(
                     f"선택된 자재 {len(df_new)}개에 대해 환입 예상재고 데이터가 갱신되었습니다."
