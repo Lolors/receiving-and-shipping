@@ -609,69 +609,81 @@ if "aggregates" not in st.session_state:
     st.session_state["aggregates"] = None
 
 
-# ============================================================
-# 📦 2. 입고 조회 화면
-# ============================================================
-if menu == "📦 입고 조회":
-    st.subheader("📦 입고 조회")
+# ============================
+# 2. 입고 조회 탭
+# ============================
+with tab_incoming:
+    st.header("📦 입고 조회")
+    st.caption("요청날짜 기준으로 입고 내역을 조회합니다.")
 
-    # 입고 시트 컬럼 매핑
-    in_req_date_col = pick_col(df_in_raw, "K", ["요청날짜"])
-    in_req_no_col   = pick_col(df_in_raw, "L", ["요청번호"])
-    in_part_col     = pick_col(df_in_raw, "M", ["품번"])
-    in_name_col     = pick_col(df_in_raw, "O", ["품명"])
-    in_req_qty_col  = pick_col(df_in_raw, "P", ["요청수량"])
-    in_erp_qty_col  = pick_col(df_in_raw, "Q", ["불출수량", "ERP불출수량"])
-    in_real_in_col  = pick_col(df_in_raw, "R", ["현장실물입고"])
-
-    needed = [
-        ("요청날짜", in_req_date_col),
-        ("요청번호", in_req_no_col),
-        ("품번", in_part_col),
-        ("품명", in_name_col),
-        ("요청수량", in_req_qty_col),
-        ("불출수량", in_erp_qty_col),
-        ("현장실물입고", in_real_in_col),
-    ]
-    missing_cols = [label for label, col in needed if col is None]
-    if missing_cols:
-        st.error(
-            "입고 시트에서 다음 컬럼을 찾지 못했습니다: "
-            + ", ".join(missing_cols)
-            + " (열 위치나 컬럼명을 한 번 확인해주세요.)"
-        )
-        st.stop()
-
-    # 기본 날짜: 어제 ~ 오늘
-    today = date.today()
-    yesterday = today - timedelta(days=1)
-
-    st.markdown("**요청날짜 기준으로 입고 내역을 조회합니다.**")
-    date_range = st.date_input(
-        "요청날짜 범위 선택",
-        value=(yesterday, today),
-        key="inbound_date_range",
-    )
-
-    # Streamlit이 단일 날짜만 반환하는 경우 처리
-    if isinstance(date_range, tuple):
-        start_date, end_date = date_range
-    else:
-        start_date = end_date = date_range
-
+    # 입고 시트 원본
     df_in = df_in_raw.copy()
-    df_in[in_req_date_col] = pd.to_datetime(
-        df_in[in_req_date_col], errors="coerce"
-    ).dt.date
 
-    mask = df_in[in_req_date_col].between(start_date, end_date)
-    df_filtered = df_in[mask].copy()
-    df_view = df_in.loc[mask, cols_to_show]
+    # 요청날짜(K열) 컬럼 찾기
+    req_date_col = pick_col(df_in, "K", ["요청날짜", "요청일"])
+    if req_date_col is None:
+        st.error("입고 시트에서 요청날짜(K열) 컬럼을 찾지 못했습니다.")
+    else:
+        # 날짜 컬럼 날짜형으로 변환
+        df_in[req_date_col] = pd.to_datetime(df_in[req_date_col], errors="coerce").dt.date
 
-    # 🔥 마지막에 추가된 행이 가장 위로 보이게
-    df_view = df_view.iloc[::-1].reset_index(drop=True)
+        # 🔹 기본 범위: 어제 ~ 오늘
+        today = date.today()
+        default_start = today - timedelta(days=1)
 
-    st.dataframe(df_view, use_container_width=True)
+        start_date, end_date = st.date_input(
+            "요청날짜 범위 선택",
+            (default_start, today),
+            key="in_date_range",
+        )
+
+        # Streamlit 버전에 따라 tuple 로 들어올 수 있어서 방어 코드
+        if isinstance(start_date, tuple):
+            start_date, end_date = start_date
+
+        # 필터 마스크
+        mask = (df_in[req_date_col] >= start_date) & (df_in[req_date_col] <= end_date)
+
+        # 각 열 컬럼 찾기
+        col_req_no   = pick_col(df_in, "L", ["요청번호"])
+        col_part     = pick_col(df_in, "M", ["품번"])
+        col_name     = pick_col(df_in, "N", ["품명"])
+        col_req_qty  = pick_col(df_in, "P", ["요청수량"])
+        col_erp_out  = pick_col(df_in, "Q", ["ERP불출수량", "불출수량"])
+        col_real_in  = pick_col(df_in, "R", ["현장실물입고"])
+
+        raw_cols = [c for c in [
+            req_date_col,
+            col_req_no,
+            col_part,
+            col_name,
+            col_req_qty,
+            col_erp_out,
+            col_real_in,
+        ] if c is not None]
+
+        if not raw_cols:
+            st.error("입고 시트에서 필요한 컬럼들을 찾지 못했습니다.")
+        else:
+            df_view = df_in.loc[mask, raw_cols].copy()
+
+            # 보기 좋게 컬럼명 한글로 맞추기
+            rename_map = {}
+            rename_map[req_date_col] = "요청날짜"
+            if col_req_no:  rename_map[col_req_no]  = "요청번호"
+            if col_part:    rename_map[col_part]    = "품번"
+            if col_name:    rename_map[col_name]    = "품명"
+            if col_req_qty: rename_map[col_req_qty] = "요청수량"
+            if col_erp_out: rename_map[col_erp_out] = "ERP불출수량"
+            if col_real_in: rename_map[col_real_in] = "현장실물입고"
+
+            df_view.rename(columns=rename_map, inplace=True)
+
+            # 🔥 엑셀에서 "마지막(맨 아래) 행"이 위로 오도록: 인덱스 역순 정렬
+            df_view = df_view.iloc[::-1].reset_index(drop=True)
+
+            st.dataframe(df_view, use_container_width=True)
+
 
     
 
