@@ -666,6 +666,14 @@ if menu == "📦 입고 조회":
 
     mask = df_in[in_req_date_col].between(start_date, end_date)
     df_filtered = df_in[mask].copy()
+    df_view = df_in.loc[mask, cols_to_show]
+
+    # 🔥 마지막에 추가된 행이 가장 위로 보이게
+    df_view = df_view.iloc[::-1].reset_index(drop=True)
+
+    st.dataframe(df_view, use_container_width=True)
+
+    
 
     if df_filtered.empty:
         st.info("선택한 기간에 해당하는 입고 데이터가 없습니다.")
