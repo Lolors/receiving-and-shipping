@@ -1333,5 +1333,3 @@ if menu == "환입 관리":
                         st.markdown(
                             f"- **{row['품번']} / {row['품명']}** : {row['비고2']}"
                         )
-
-::contentReference[oaicite:0]{index=0}
