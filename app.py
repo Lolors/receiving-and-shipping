@@ -1348,7 +1348,7 @@ if menu == "↩️ 환입 관리":
                 aggs = st.session_state["aggregates"]
 
                 # 집계 사용해서 환입 예상재고 계산
-                df_full = recalc_return_expectation(df_return, aggs)
+                df_full = recalc_return_expectation(df_return, aggs, df_stock_raw)
                 st.session_state["환입재고예상"] = df_full
 
                 st.success(
