@@ -355,11 +355,6 @@ def build_aggregates(df_in_raw, df_job_raw, df_result_raw, df_defect_raw, df_sto
     )
 
     aggregates["stock"] = agg_stock
-    else:
-        aggregates["stock"] = pd.DataFrame(columns=["품번", "ERP재고"])
-
-    return aggregates
-
 
 # -----------------------------
 # 환입 예상재고 계산 (merge 기반)
