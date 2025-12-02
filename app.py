@@ -612,7 +612,7 @@ if "aggregates" not in st.session_state:
 # ============================
 # 2. 입고 조회 탭
 # ============================
-with tab_incoming:
+if menu == "📦 입고 조회":
     st.header("📦 입고 조회")
     st.caption("요청날짜 기준으로 입고 내역을 조회합니다.")
 
@@ -638,7 +638,7 @@ with tab_incoming:
         )
 
         # Streamlit 버전에 따라 tuple 로 들어올 수 있어서 방어 코드
-        if isinstance(start_date, tuple):
+        if isinstance(start_date, (tuple, list)):
             start_date, end_date = start_date
 
         # 필터 마스크
@@ -665,7 +665,7 @@ with tab_incoming:
         if not raw_cols:
             st.error("입고 시트에서 필요한 컬럼들을 찾지 못했습니다.")
         else:
-            df_view = df_in.loc[mask, raw_cols].copy()
+            df_filtered = df_in.loc[mask, raw_cols].copy()
 
             # 보기 좋게 컬럼명 한글로 맞추기
             rename_map = {}
@@ -677,50 +677,25 @@ with tab_incoming:
             if col_erp_out: rename_map[col_erp_out] = "ERP불출수량"
             if col_real_in: rename_map[col_real_in] = "현장실물입고"
 
-            df_view.rename(columns=rename_map, inplace=True)
+            df_filtered.rename(columns=rename_map, inplace=True)
 
             # 🔥 엑셀에서 "마지막(맨 아래) 행"이 위로 오도록: 인덱스 역순 정렬
-            df_view = df_view.iloc[::-1].reset_index(drop=True)
+            df_filtered = df_filtered.iloc[::-1].reset_index(drop=True)
 
-            st.dataframe(df_view, use_container_width=True)
+            if df_filtered.empty:
+                st.info("선택한 기간에 해당하는 입고 데이터가 없습니다.")
+            else:
+                st.dataframe(df_filtered, use_container_width=True)
 
+                # CSV 다운로드
+                csv_inbound = df_filtered.to_csv(index=False).encode("utf-8-sig")
+                st.download_button(
+                    "📥 이 조회 결과를 CSV로 받기",
+                    data=csv_inbound,
+                    file_name=f"입고조회_{start_date}_{end_date}.csv",
+                    mime="text/csv",
+                )
 
-    
-
-    if df_filtered.empty:
-        st.info("선택한 기간에 해당하는 입고 데이터가 없습니다.")
-    else:
-        df_show = df_filtered[
-            [
-                in_req_date_col,
-                in_req_no_col,
-                in_part_col,
-                in_name_col,
-                in_req_qty_col,
-                in_erp_qty_col,
-                in_real_in_col,
-            ]
-        ].copy()
-        df_show.columns = [
-            "요청날짜",
-            "요청번호",
-            "품번",
-            "품명",
-            "요청수량",
-            "불출수량",
-            "현장실물입고",
-        ]
-
-        st.markdown("#### 조회 결과")
-        st.dataframe(df_show, use_container_width=True)
-
-        csv_inbound = df_show.to_csv(index=False).encode("utf-8-sig")
-        st.download_button(
-            "📥 이 조회 결과를 CSV로 받기",
-            data=csv_inbound,
-            file_name=f"입고조회_{start_date}_{end_date}.csv",
-            mime="text/csv",
-        )
 
 # ============================================================
 # 🔍 3. 수주 찾기 화면
