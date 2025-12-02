@@ -1513,13 +1513,40 @@ if menu == "↩️ 환입 관리":
 
         # PDF 받기 버튼 (최종 CSV용 데이터 기준)
         if REPORTLAB_AVAILABLE and not csv_export_df.empty:
-            pdf_bytes = generate_pdf(csv_export_df)
+            pdf_bytes = generate_pdf(csv_export_df, uploaded_image)
             st.download_button(
                 "📄 PDF 받기",
                 data=pdf_bytes,
                 file_name="환입_예상재고.pdf",
                 mime="application/pdf",
             )
+
+            # 📎 PDF에 넣을 스크린샷 붙여넣기
+            st.markdown("### 📎 PDF에 넣을 스크린샷을 붙여넣기(Ctrl+V) 하세요")
+
+            clipboard_img = st.text_area(
+                "스크린샷 붙여넣기",
+                height=150,
+                key="clipboard_image_box",
+                placeholder="여기에 스크린샷을 Ctrl+V로 붙여넣으세요."
+            )
+
+            uploaded_image = None
+            if clipboard_img:
+                import re
+                import base64
+                from io import BytesIO
+
+                match = re.search(
+                    r"data:image/(png|jpeg|jpg);base64,([A-Za-z0-9+/=]+)",
+                    clipboard_img,
+                )
+                if match:
+                    img_data = match.group(2)
+                    uploaded_image = BytesIO(base64.b64decode(img_data))
+                else:
+                    st.warning("유효한 이미지(base64)를 찾을 수 없습니다.")
+        
         elif not REPORTLAB_AVAILABLE:
             st.info("PDF 저장 기능을 쓰려면 `pip install reportlab` 설치가 필요합니다.")
 
