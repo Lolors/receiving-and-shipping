@@ -1032,13 +1032,14 @@ if menu == "↩️ 환입 관리":
 
                 df_show.rename(columns=rename_map, inplace=True)
 
-                # 중복 줄이기: 수주번호/지시번호/제품명/품번 기준으로 uniq
-                uniq_cols = [c for c in ["요청날짜", "수주번호", "지시번호", "제품명", "품번"] if c in df_show.columns]
-                df_show = df_show.drop_duplicates(subset=uniq_cols)
+                # 품번 제거
+                if "품번" in df_show.columns:
+                    df_show = df_show.drop(columns=["품번"])
 
-                # 최근 날짜가 위로 오도록
-                if "요청날짜" in df_show.columns:
-                    df_show = df_show.sort_values("요청날짜", ascending=False)
+                # 요청날짜 + 수주번호 + 지시번호 기준으로만 중복 제거
+                uniq_cols = [c for c in ["요청날짜", "수주번호", "지시번호"] if c in df_show.columns]
+                df_show = df_show.drop_duplicates(subset=uniq_cols, keep="first")
+
 
                 st.dataframe(df_show, use_container_width=True)
 
@@ -1295,6 +1296,21 @@ if menu == "↩️ 환입 관리":
                 # 집계 사용해서 환입 예상재고 계산
                 df_full = recalc_return_expectation(df_return, aggs)
                 st.session_state["환입재고예상"] = df_full
+
+                # ===== ERP재고 직접 매칭 패치 =====
+                stock_part_col = pick_col(df_stock_raw, "D", ["품번"])
+                stock_qty_col  = pick_col(df_stock_raw, "N", ["실재고수량"])
+
+                if stock_part_col and stock_qty_col:
+                    stock_map = dict(
+                        zip(
+                            df_stock_raw[stock_part_col].astype(str),
+                            df_stock_raw[stock_qty_col].apply(safe_num)
+                        )
+                    )
+                    df_full["ERP재고"] = df_full["품번"].astype(str).map(stock_map).fillna(0)
+                else:
+                    st.warning("재고 시트에서 품번(D) 또는 실재고수량(N) 컬럼을 찾을 수 없습니다.")
 
                 st.success(
                     f"선택된 자재 {len(df_new)}개에 대해 환입 예상재고 데이터가 갱신되었습니다."
