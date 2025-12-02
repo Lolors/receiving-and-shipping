@@ -588,7 +588,6 @@ else:
 # 메인 화면
 # -----------------------------
 st.title("부자재 입고 / 환입 관리")
-st.write("현재 PDF 폰트:", KOREAN_FONT_NAME)
 
 menu = st.radio(
     "메뉴 선택",
