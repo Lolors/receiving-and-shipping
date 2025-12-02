@@ -1075,9 +1075,10 @@ if menu == "↩️ 환입 관리":
                 if "품번" in df_show.columns:
                     df_show = df_show.drop(columns=["품번"])
 
-                # 요청날짜 + 수주번호 + 지시번호 기준으로만 중복 제거
-                uniq_cols = [c for c in ["요청날짜", "수주번호", "지시번호"] if c in df_show.columns]
-                df_show = df_show.drop_duplicates(subset=uniq_cols, keep="first")
+                # 요청날짜는 중복 제거 기준에서 제외하고,
+                # 수주번호 + 지시번호만 유일하도록 정리
+                uniq_cols = [c for c in ["수주번호", "지시번호"] if c in df_show.columns]
+                df_show = df_show.drop_duplicates(subset=uniq_cols)
 
                 st.dataframe(df_show, use_container_width=True)
 
