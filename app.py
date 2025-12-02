@@ -67,7 +67,6 @@ try:
     else:
         try:
             pdfmetrics.registerFont(TTFont(KOREAN_FONT_NAME, FONT_PATH))
-            st.write("✅ PDF 폰트 로딩 성공:", FONT_PATH)
         except Exception as e:
             st.write("⚠️ 폰트 로딩 실패:", repr(e))
             KOREAN_FONT_NAME = "Helvetica"
@@ -1081,8 +1080,42 @@ if menu == "↩️ 환입 관리":
                 uniq_cols = [c for c in ["요청날짜", "수주번호", "지시번호"] if c in df_show.columns]
                 df_show = df_show.drop_duplicates(subset=uniq_cols, keep="first")
 
-
                 st.dataframe(df_show, use_container_width=True)
+
+                    st.dataframe(df_show, use_container_width=True)
+
+                # 🔽 검색 결과에서 한 행을 선택하면 아래 수주번호/지시번호 자동 채우기
+                if "수주번호" in df_show.columns:
+                    df_select = df_show.reset_index(drop=True)
+
+                    option_labels = []
+                    option_map = {}
+
+                    for _, row in df_select.iterrows():
+                        suju_val = str(row.get("수주번호", ""))
+                        jisi_val = str(row.get("지시번호", ""))
+                        prod_val = str(row.get("제품명", ""))
+
+                        # 화면에 보여줄 라벨
+                        label = f"{prod_val} | 수주:{suju_val}"
+                        if jisi_val:
+                            label += f" / 지시:{jisi_val}"
+
+                        option_labels.append(label)
+                        option_map[label] = (suju_val, jisi_val)
+
+                    selected_label = st.selectbox(
+                        "👇 이 중 하나를 선택하면 아래 수주번호/지시번호가 자동으로 채워집니다.",
+                        ["선택 안 함"] + option_labels,
+                        key="return_suju_autofill",
+                    )
+
+                    if selected_label != "선택 안 함":
+                        sel_suju, sel_jisi = option_map[selected_label]
+                        # 아래 입력칸에 자동 반영
+                        st.session_state["return_suju_no"] = sel_suju
+                        if sel_jisi:
+                            st.session_state["return_jisi"] = sel_jisi
 
     
     # ----- 입력 1줄 (수주번호, 지시번호, 생산공정, 종료조건) -----
