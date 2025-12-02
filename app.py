@@ -331,30 +331,31 @@ def build_aggregates(df_in_raw, df_job_raw, df_result_raw, df_defect_raw, df_sto
             columns=["지시번호", "품번", "원불", "작불"]
         )
 
-    # === 5) 재고 집계: 품번별 ERP재고 (재고 시트 D열 & N열 고정 사용) ===
+    # === 5) 재고 집계: 품번별 ERP재고 (재고 시트 D열 품번, N열 수량) ===
+    stock_cols = list(df_stock_raw.columns)
     try:
-        cols = list(df_stock_raw.columns)
-        part_col = cols[excel_col_to_index("D")]  # D열: 품번
-        qty_col = cols[excel_col_to_index("N")]   # N열: ERP 재고 값
-    except Exception:
-        # D열이나 N열이 없으면 빈 테이블로 처리
+        # 엑셀 기준 D열, N열 그대로 사용 (헤더 이름과 상관없이 위치로 잡음)
+        part_col = stock_cols[excel_col_to_index("D")]  # D열: 품번
+        qty_col  = stock_cols[excel_col_to_index("N")]  # N열: ERP 재고 값
+    except IndexError:
+        # 열 개수가 모자라면 빈 테이블
         aggregates["stock"] = pd.DataFrame(columns=["품번", "ERP재고"])
         return aggregates
 
-    # 재고 시트에서 D, N 열만 사용
     df_stock = df_stock_raw[[part_col, qty_col]].copy()
     df_stock.columns = ["품번", "ERP재고"]
 
-    # 숫자형으로 정리
+    # 품번/수량 정리
+    df_stock["품번"] = df_stock["품번"].astype(str).str.strip()
     df_stock["ERP재고"] = df_stock["ERP재고"].apply(safe_num)
 
-    # 같은 품번이 여러 행이면 N열 값 합계 (여기서 합치는 방식이 마음에 안 들면 first로 바꾸면 됨)
+    # 같은 품번이 여러 줄이면 N열 값 합계
     agg_stock = (
         df_stock.groupby("품번", as_index=False)["ERP재고"]
         .sum()
     )
-
     aggregates["stock"] = agg_stock
+
 
 # -----------------------------
 # 환입 예상재고 계산 (merge 기반)
