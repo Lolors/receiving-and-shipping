@@ -1559,6 +1559,7 @@ if menu == "↩️ 환입 관리":
                     file_name="환입_예상재고.pdf",
                     mime="application/pdf"
                 )
+
         
         elif not REPORTLAB_AVAILABLE:
             st.info("PDF 저장 기능을 쓰려면 `pip install reportlab` 설치가 필요합니다.")
