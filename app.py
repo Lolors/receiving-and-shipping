@@ -3,9 +3,20 @@ import pandas as pd
 from datetime import date, timedelta
 import io
 
-# S3 관련 import
-import boto3
-from botocore.exceptions import ClientError
+# 🔥 S3 연동용
+try:
+    import boto3
+    from botocore.exceptions import ClientError
+    S3_AVAILABLE = True
+except ModuleNotFoundError:
+    boto3 = None
+    ClientError = Exception
+    S3_AVAILABLE = False
+
+# 🔥 S3 설정 (버킷/키 고정)
+S3_BUCKET_NAME = "rec-and-ship"              # 버킷 이름
+S3_OBJECT_KEY = "rec-and-ship-master.xlsm"      # S3 안에서 사용할 파일 이름(원하는 이름으로 수정 가능)
+
 
 # PDF 생성용 (reportlab 없는 환경에서도 앱이 죽지 않도록 처리)
 try:
@@ -556,26 +567,48 @@ uploaded_file = st.file_uploader(
     "📂 2025년 부자재 관리대장 파일을 업로드하세요", type=["xlsm", "xlsx"]
 )
 
-s3_file_obj = None
+file_bytes = None
 
+# 1) 사용자가 새 파일을 올렸을 때: S3에 put_object 로 업로드 + 이 세션에서 사용
 if uploaded_file is not None:
-    # 업로드된 파일을 S3에 덮어쓰기
-    s3 = get_s3_client()
-    try:
-        s3.upload_fileobj(uploaded_file, S3_BUCKET, S3_KEY)
-        st.success("S3에 관리대장 파일이 업로드/갱신되었습니다.")
-    except ClientError as e:
-        st.error(f"S3 업로드 중 오류가 발생했습니다: {e}")
-    # S3에서 다시 읽어와서 사용
-    s3_file_obj = load_from_s3()
-else:
-    # 새 업로드가 없으면, S3에 이미 있는 파일 사용
-    s3_file_obj = load_from_s3()
+    file_bytes = uploaded_file.getvalue()
 
-if s3_file_obj is None:
+    if S3_AVAILABLE:
+        try:
+            s3 = boto3.client("s3")
+            # 🔥 멀티파트 업로드가 아닌, 단일 PUT 으로 업로드 (CreateMultipartUpload 권한 불필요)
+            s3.put_object(
+                Bucket=S3_BUCKET_NAME,
+                Key=S3_OBJECT_KEY,
+                Body=file_bytes,
+            )
+            st.success("S3에 관리대장 파일을 업로드(교체) 했습니다.")
+        except ClientError as e:
+            st.error(f"S3 업로드 중 오류가 발생했습니다: {e}")
+    else:
+        st.info("boto3 모듈이 없어 S3에는 저장하지 못했습니다. (requirements.txt 에 boto3 추가 필요)")
+
+# 2) 새로 올린 파일이 없으면: S3 에서 기존 파일을 불러오기 시도
+elif S3_AVAILABLE:
+    try:
+        s3 = boto3.client("s3")
+        obj = s3.get_object(Bucket=S3_BUCKET_NAME, Key=S3_OBJECT_KEY)
+        file_bytes = obj["Body"].read()
+        st.info("S3에 저장된 기존 관리대장 파일을 불러왔습니다.")
+    except ClientError as e:
+        code = e.response.get("Error", {}).get("Code")
+        if code in ("NoSuchKey", "404", "NotFound"):
+            st.warning("S3에서 기존 관리대장 파일을 찾지 못했습니다. 새 파일을 업로드해주세요.")
+        else:
+            st.error(f"S3에서 파일을 가져오는 중 오류가 발생했습니다: {e}")
+
+# 3) 둘 다 없으면 진행 불가
+if file_bytes is None:
     st.stop()
 
-sheets = load_excel(s3_file_obj)
+# 4) 최종적으로 확보한 bytes 를 엑셀로 읽기
+sheets = load_excel(io.BytesIO(file_bytes))
+
 
 # 필수 시트 체크
 required_sheets = ["입고", "작업지시", "수주", "BOM", "재고", "생산실적", "불량"]
