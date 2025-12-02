@@ -1266,7 +1266,7 @@ if menu == "↩️ 환입 관리":
         bom_name_col2 = (
             bom_name_cols[1]
             if len(bom_name_cols) >= 2
-            else (bom_name_cols[0] if bom_name_cols else None)
+            else (bom_name_cols[0] if len(bom_name_cols) >= 1 else None)
         )
 
         df_bom_finished = df_bom_raw[df_bom_raw[item_col] == finished_part].copy()
@@ -1286,10 +1286,12 @@ if menu == "↩️ 환입 관리":
             else:
                 df_bom_fin_uniq = df_bom_finished.drop_duplicates()
 
+            # ------------------------------
+            # 자재 선택 테이블 생성
+            # ------------------------------
             bom_component_df = pd.DataFrame(
                 {
-                    # ✅ 기본은 모두 미선택(False) 상태로 시작
-                    "선택": False,
+                    "선택": False,   # 기본값 = 미선택
                     "완성품번": df_bom_fin_uniq[item_col],
                     "품번": df_bom_fin_uniq[bom_component_col2]
                     if bom_component_col2 in df_bom_fin_uniq.columns
@@ -1304,6 +1306,7 @@ if menu == "↩️ 환입 관리":
             )
 
             st.markdown("BOM 자재 목록에서 환입 대상 자재를 선택하세요.")
+
             bom_component_df = st.data_editor(
                 bom_component_df,
                 use_container_width=True,
@@ -1311,17 +1314,14 @@ if menu == "↩️ 환입 관리":
                 key="bom_component_editor",
             )
 
-            # ✅ 혹시 모를 NaN → False 처리 + bool 강제
+            # 선택 컬럼 안전 처리
             if "선택" in bom_component_df.columns:
-                bom_component_df["선택"] = bom_component_df["선택"].fillna(False).astype(bool)
+                bom_component_df["선택"] = (
+                    bom_component_df["선택"]
+                    .fillna(False)
+                    .astype(bool)
+                )
 
-                        st.markdown("BOM 자재 목록에서 환입 대상 자재를 선택하세요.")
-                        bom_component_df = st.data_editor(
-                           bom_component_df,
-                            use_container_width=True,
-                            num_rows="dynamic",
-                            key="bom_component_editor",
-                        )
 
     # ----- 환입 데이터 불러오기 버튼 -----
     if st.button(
