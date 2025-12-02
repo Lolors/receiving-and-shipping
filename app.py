@@ -634,7 +634,7 @@ if "aggregates" not in st.session_state:
 # -----------------------------
 menu = st.radio(
     "메뉴 선택",
-    ["수주 찾기", "환입 관리"],
+    ["수주 찾기", "환입 관리", "입고 조회"],
     horizontal=True,
     key="main_menu",
 )
@@ -1366,3 +1366,98 @@ if menu == "환입 관리":
                         st.markdown(
                             f"- **{row['품번']} / {row['품명']}** : {row['비고2']}"
                         )
+# ============================================================
+# 3. 입고 조회 화면
+# ============================================================
+if menu == "입고 조회":
+    st.subheader("📦 입고 조회")
+
+    # 입고 시트에서 필요한 컬럼 매핑
+    in_req_date_col = pick_col(df_in_raw, "K", ["요청날짜"])
+    in_req_no_col   = pick_col(df_in_raw, "L", ["요청번호"])
+    in_part_col     = pick_col(df_in_raw, "M", ["품번"])
+    in_name_col     = pick_col(df_in_raw, "O", ["품명"])
+    in_req_qty_col  = pick_col(df_in_raw, "P", ["요청수량"])
+    in_erp_qty_col  = pick_col(df_in_raw, "Q", ["불출수량", "ERP불출수량"])
+    in_real_in_col  = pick_col(df_in_raw, "R", ["현장실물입고"])
+
+    needed = [
+        ("요청날짜", in_req_date_col),
+        ("요청번호", in_req_no_col),
+        ("품번", in_part_col),
+        ("품명", in_name_col),
+        ("요청수량", in_req_qty_col),
+        ("불출수량", in_erp_qty_col),
+        ("현장실물입고", in_real_in_col),
+    ]
+
+    missing_cols = [label for label, col in needed if col is None]
+    if missing_cols:
+        st.error(
+            "입고 시트에서 다음 컬럼을 찾지 못했습니다: "
+            + ", ".join(missing_cols)
+            + "  (열 위치나 컬럼명을 한 번 확인해주세요.)"
+        )
+        st.stop()
+
+    # 기본 날짜: 어제 ~ 오늘
+    today = date.today()
+    yesterday = today - timedelta(days=1)
+
+    st.markdown("**요청날짜 기준으로 입고 내역을 조회합니다.**")
+    start_date, end_date = st.date_input(
+        "요청날짜 범위 선택",
+        value=(yesterday, today),
+        key="inbound_date_range",
+    )
+
+    # 단일 날짜 선택 방어 (Streamlit이 한 날짜만 반환하는 경우 대비)
+    if isinstance(start_date, date) and not isinstance(end_date, date):
+        start_date, end_date = start_date, start_date
+
+    # 데이터 가공
+    df_in = df_in_raw.copy()
+    df_in[in_req_date_col] = pd.to_datetime(
+        df_in[in_req_date_col], errors="coerce"
+    ).dt.date
+
+    mask = df_in[in_req_date_col].between(start_date, end_date)
+    df_filtered = df_in[mask].copy()
+
+    if df_filtered.empty:
+        st.info("선택한 기간에 해당하는 입고 데이터가 없습니다.")
+    else:
+        df_show = df_filtered[
+            [
+                in_req_date_col,
+                in_req_no_col,
+                in_part_col,
+                in_name_col,
+                in_req_qty_col,
+                in_erp_qty_col,
+                in_real_in_col,
+            ]
+        ].copy()
+
+        # 컬럼명 보기 좋게 변경
+        df_show.columns = [
+            "요청날짜",
+            "요청번호",
+            "품번",
+            "품명",
+            "요청수량",
+            "불출수량",
+            "현장실물입고",
+        ]
+
+        st.markdown("#### 조회 결과")
+        st.dataframe(df_show, use_container_width=True)
+
+        # 필요하면 CSV로도 받을 수 있게 옵션
+        csv_inbound = df_show.to_csv(index=False).encode("utf-8-sig")
+        st.download_button(
+            "📥 이 조회 결과를 CSV로 받기",
+            data=csv_inbound,
+            file_name=f"입고조회_{start_date}_{end_date}.csv",
+            mime="text/csv",
+        )
