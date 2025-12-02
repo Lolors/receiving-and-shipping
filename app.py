@@ -360,12 +360,16 @@ def build_aggregates(df_in_raw, df_job_raw, df_result_raw, df_defect_raw, df_sto
 # -----------------------------
 # 환입 예상재고 계산 (merge 기반)
 # -----------------------------
-def recalc_return_expectation(df_return, aggs):
+def recalc_return_expectation(df_return, aggs, df_stock_raw):
     """
     df_return(환입관리 테이블)에 집계 데이터(aggs)를 merge로 붙여서
     ERP불출수량, 현장실물입고, 지시수량, 생산수량, QC샘플, 기타샘플, 원불, 작불, ERP재고, 예상재고를 계산
 
     예상재고 = 현장실물입고 - (생산수량 + QC샘플 + 기타샘플) * 단위수량 - 작불
+
+    ⚠ ERP재고는 aggregates['stock']를 쓰지 않고,
+      재고 시트(df_stock_raw)의 D열(품번) / N열(재고)을
+      df_return 안의 '품번' 기준으로 직접 조회해서 가져온다.
     """
     if df_return.empty:
         return pd.DataFrame(columns=CSV_COLS)
@@ -405,14 +409,31 @@ def recalc_return_expectation(df_return, aggs):
         on=["지시번호", "품번"],
     )
 
-    # 5) 재고 집계 붙이기: ERP재고 (품번)
+    # 5) 재고 시트(D열 품번, N열 재고)를 직접 조회해서 ERP재고 붙이기
     if "ERP재고" in df.columns:
         df = df.drop(columns=["ERP재고"])
-    df = df.merge(
-        aggs["stock"],
-        how="left",
-        on="품번",
-    )
+
+    stock_cols = list(df_stock_raw.columns)
+    try:
+        stock_part_col = stock_cols[excel_col_to_index("D")]  # D열: 품번
+        stock_qty_col  = stock_cols[excel_col_to_index("N")]  # N열: 재고 수량
+    except IndexError:
+        # 열이 부족하면 ERP재고는 전부 0 처리
+        df["ERP재고"] = 0.0
+    else:
+        stock_df = df_stock_raw[[stock_part_col, stock_qty_col]].copy()
+        stock_df.columns = ["품번", "ERP재고"]
+
+        # 문자열/숫자 정리
+        stock_df["품번"] = stock_df["품번"].astype(str).str.strip()
+        stock_df["ERP재고"] = stock_df["ERP재고"].apply(safe_num)
+
+        # 같은 품번이 여러 줄이면 N열 값 합계
+        stock_df = stock_df.groupby("품번", as_index=False)["ERP재고"].sum()
+
+        # 환입 데이터 품번도 문자열로 맞춰서 merge
+        df["품번"] = df["품번"].astype(str).str.strip()
+        df = df.merge(stock_df, how="left", on="품번")
 
     # 숫자 컬럼들 NaN -> 0, 문자열이면 float 변환
     num_cols = [
@@ -450,6 +471,7 @@ def recalc_return_expectation(df_return, aggs):
 
     out = df[CSV_COLS].copy()
     return out
+
 
 
 # -----------------------------
