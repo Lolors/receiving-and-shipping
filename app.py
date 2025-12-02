@@ -1118,27 +1118,6 @@ if menu == "↩️ 환입 관리":
                     st.session_state["return_suju_no"] = str(sel_row["수주번호"])
                     st.session_state["return_jisi"] = str(sel_row["지시번호"])
 
-                # 🔽 검색 결과에서 한 행을 선택하면 아래 수주번호/지시번호 자동 채우기
-                if "수주번호" in df_show.columns:
-                    df_select = df_show.reset_index(drop=True)
-
-                    option_labels = []
-                    option_map = {}
-
-                    for _, row in df_select.iterrows():
-                        suju_val = str(row.get("수주번호", ""))
-                        jisi_val = str(row.get("지시번호", ""))
-                        prod_val = str(row.get("제품명", ""))
-
-                        # 화면에 보여줄 라벨
-                        label = f"{prod_val} | 수주:{suju_val}"
-                        if jisi_val:
-                            label += f" / 지시:{jisi_val}"
-
-                        option_labels.append(label)
-                        option_map[label] = (suju_val, jisi_val)
-
-
     
     # ----- 입력 1줄 (수주번호, 지시번호, 생산공정, 종료조건) -----
     col_suju, col_jisi, col_proc, col_reason = st.columns(4)
