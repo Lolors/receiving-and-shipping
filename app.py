@@ -458,34 +458,6 @@ def recalc_return_expectation(df_return, aggs):
     out = df[CSV_COLS].copy()
     return out
 
-
-# ----
-# 클립보드 기반 스크린샷
-# ----
-
-st.markdown("### 📎 PDF에 넣을 스크린샷을 붙여넣기(Ctrl+V) 하세요")
-
-clipboard_img = st.text_area(
-    "여기에 스크린샷을 붙여넣으세요",
-    height=150,
-    key="clipboard_image_box",
-    placeholder="스크린샷을 Ctrl+V로 붙여넣으면 자동으로 이미지가 인식됩니다."
-)
-
-uploaded_image = None
-if clipboard_img:
-    import re
-    import base64
-    from io import BytesIO
-
-    # base64 이미지 검출
-    match = re.search(r"data:image/(png|jpeg|jpg);base64,([A-Za-z0-9+/=]+)", clipboard_img)
-    if match:
-        img_data = match.group(2)
-        uploaded_image = BytesIO(base64.b64decode(img_data))
-    else:
-        st.warning("유효한 이미지(base64)를 찾지 못했습니다. 스크린샷을 다시 붙여넣어주세요.")
-
 # -----------------------------
 # PDF 생성 함수
 # -----------------------------
