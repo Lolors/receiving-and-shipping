@@ -938,9 +938,6 @@ if menu == "🔍 수주 찾기":
 # ============================================================
 # ↩️ 4. 환입 관리 화면 (+ 환입 예상재고)
 # ============================================================
-# ============================================================
-# ↩️ 4. 환입 관리 화면 (+ 환입 예상재고)
-# ============================================================
 if menu == "↩️ 환입 관리":
     st.subheader("↩️ 환입 관리")
 
@@ -956,79 +953,79 @@ if menu == "↩️ 환입 관리":
     df_full = ensure_session_df("환입재고예상", CSV_COLS)
 
 
-# 🔍 수주 검색 (입고 시트 기준)
-st.markdown("### 🔍 수주 검색 (입고 시트 기준)")
+    # 🔍 수주 검색 (입고 시트 기준)
+    st.markdown("### 🔍 수주 검색 (입고 시트 기준)")
 
-search_keyword = st.text_input(
-    "제품명으로 수주 검색 (입고 시트 E열, 부분 일치)",
-    key="return_search_product",
-    placeholder="예: 앰플, 크림, 마스크팩 등"
-)
+    search_keyword = st.text_input(
+        "제품명으로 수주 검색 (입고 시트 E열, 부분 일치)",
+        key="return_search_product",
+        placeholder="예: 앰플, 크림, 마스크팩 등"
+    )
 
-if search_keyword:
-    df_in_search = df_in_raw.copy()
+    if search_keyword:
+        df_in_search = df_in_raw.copy()
 
-    # 요청날짜(K열), 제품명(E열) 컬럼 찾기
-    in_req_date_col = pick_col(df_in_search, "K", ["요청날짜", "요청일"])
-    in_prod_name_col = pick_col(df_in_search, "E", ["제품명", "품명"])
+        # 요청날짜(K열), 제품명(E열) 컬럼 찾기
+        in_req_date_col = pick_col(df_in_search, "K", ["요청날짜", "요청일"])
+        in_prod_name_col = pick_col(df_in_search, "E", ["제품명", "품명"])
 
-    if in_req_date_col is None or in_prod_name_col is None:
-        st.error("입고 시트에서 요청날짜(K열) 또는 제품명(E열) 컬럼을 찾지 못했습니다.")
-    else:
-        # 날짜형 변환
-        df_in_search[in_req_date_col] = pd.to_datetime(
-            df_in_search[in_req_date_col], errors="coerce"
-        ).dt.date
-
-        today = date.today()
-        start_date = today - timedelta(days=30)  # 최근 1개월
-
-        # 날짜 필터: 현재로부터 1달 이내
-        mask_date = df_in_search[in_req_date_col].between(start_date, today)
-
-        # 제품명 부분 일치 (대소문자 무시) — 품번은 검색에 사용하지 않음
-        mask_name = df_in_search[in_prod_name_col].astype(str).str.contains(
-            search_keyword, case=False, na=False
-        )
-
-        df_hit = df_in_search[mask_date & mask_name].copy()
-
-        if df_hit.empty:
-            st.info("최근 1개월 이내에 해당 제품명이 포함된 입고 데이터가 없습니다.")
+        if in_req_date_col is None or in_prod_name_col is None:
+            st.error("입고 시트에서 요청날짜(K열) 또는 제품명(E열) 컬럼을 찾지 못했습니다.")
         else:
-            # 보여줄 컬럼: 요청날짜(K), 수주번호(B), 지시번호(C), 제품명(E)
-            in_suju_col = pick_col(df_hit, "B", ["수주번호"])
-            in_jisi_col = pick_col(df_hit, "C", ["지시번호"])
+            # 날짜형 변환
+            df_in_search[in_req_date_col] = pd.to_datetime(
+                df_in_search[in_req_date_col], errors="coerce"
+            ).dt.date
 
-            show_cols = []
-            for c in [in_req_date_col, in_suju_col, in_jisi_col, in_prod_name_col]:
-                if c and c in df_hit.columns:
-                    show_cols.append(c)
+            today = date.today()
+            start_date = today - timedelta(days=30)  # 최근 1개월
 
-            df_show = df_hit[show_cols].copy()
+            # 날짜 필터: 현재로부터 1달 이내
+            mask_date = df_in_search[in_req_date_col].between(start_date, today)
 
-            # 🔹 컬럼명 한글로 정리
+            # 제품명 부분 일치 (대소문자 무시) — 품번은 검색에 사용하지 않음
+           mask_name = df_in_search[in_prod_name_col].astype(str).str.contains(
+                search_keyword, case=False, na=False
+            )
+    
+            df_hit = df_in_search[mask_date & mask_name].copy()
+
+            if df_hit.empty:
+                st.info("최근 1개월 이내에 해당 제품명이 포함된 입고 데이터가 없습니다.")
+            else:
+                # 보여줄 컬럼: 요청날짜(K), 수주번호(B), 지시번호(C), 제품명(E)
+                in_suju_col = pick_col(df_hit, "B", ["수주번호"])
+                in_jisi_col = pick_col(df_hit, "C", ["지시번호"])
+
+                show_cols = []
+                for c in [in_req_date_col, in_suju_col, in_jisi_col, in_prod_name_col]:
+                    if c and c in df_hit.columns:
+                        show_cols.append(c)
+    
+                df_show = df_hit[show_cols].copy()
+
+                # 🔹 컬럼명 한글로 정리
             rename_map = {}
-            rename_map[in_req_date_col] = "요청날짜"
-            if in_suju_col:
-                rename_map[in_suju_col] = "수주번호"
-            if in_jisi_col:
-                rename_map[in_jisi_col] = "지시번호"
-            if in_prod_name_col:
-                rename_map[in_prod_name_col] = "제품명"
+                rename_map[in_req_date_col] = "요청날짜"
+                if in_suju_col:
+                    rename_map[in_suju_col] = "수주번호"
+                if in_jisi_col:
+                    rename_map[in_jisi_col] = "지시번호"
+                if in_prod_name_col:
+                    rename_map[in_prod_name_col] = "제품명"
 
-            df_show.rename(columns=rename_map, inplace=True)
+                df_show.rename(columns=rename_map, inplace=True)
 
-            # 🔹 중복 제거 기준: 요청날짜 + 수주번호 + 지시번호
-            uniq_cols = [c for c in ["요청날짜", "수주번호", "지시번호"] if c in df_show.columns]
-            if uniq_cols:
-                df_show = df_show.drop_duplicates(subset=uniq_cols)
+                # 🔹 중복 제거 기준: 요청날짜 + 수주번호 + 지시번호
+                uniq_cols = [c for c in ["요청날짜", "수주번호", "지시번호"] if c in df_show.columns]
+                if uniq_cols:
+                    df_show = df_show.drop_duplicates(subset=uniq_cols)
 
-            # 🔹 최근 날짜 순으로 정렬
-            if "요청날짜" in df_show.columns:
-                df_show = df_show.sort_values("요청날짜", ascending=False)
+                # 🔹 최근 날짜 순으로 정렬
+                if "요청날짜" in df_show.columns:
+                   df_show = df_show.sort_values("요청날짜", ascending=False)
 
-            st.dataframe(df_show, use_container_width=True)
+                st.dataframe(df_show, use_container_width=True)
 
             # =========================
             # 🔽 검색 결과 선택 → 아래 입력창 자동 채우기
