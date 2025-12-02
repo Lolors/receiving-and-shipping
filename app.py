@@ -3,20 +3,42 @@ import pandas as pd
 from datetime import date, timedelta
 import io
 
-# 🔥 S3 연동용
-try:
-    import boto3
-    from botocore.exceptions import ClientError
-    S3_AVAILABLE = True
-except ModuleNotFoundError:
-    boto3 = None
-    ClientError = Exception
-    S3_AVAILABLE = False
+# ============ S3 연동 ============
 
-# 🔥 S3 설정 (버킷/키 고정)
-S3_BUCKET_NAME = "rec-and-ship"              # 버킷 이름
-S3_OBJECT_KEY = "rec-and-ship-master.xlsm"      # S3 안에서 사용할 파일 이름(원하는 이름으로 수정 가능)
+import boto3
+from botocore.exceptions import ClientError
 
+S3_BUCKET = "rec-and-ship"
+S3_KEY = "bulk-ledger.xlsx"  # 항상 이 이름으로 저장/불러오기
+
+def get_s3_client():
+    try:
+        return boto3.client(
+            "s3",
+            aws_access_key_id=st.secrets["AWS_ACCESS_KEY_ID"],
+            aws_secret_access_key=st.secrets["AWS_SECRET_ACCESS_KEY"],
+            region_name="ap-northeast-2",
+        )
+    except Exception as e:
+        st.error(f"S3 클라이언트를 생성하는 중 오류 발생: {e}")
+        return None
+
+s3_client = get_s3_client()
+
+@st.cache_data(show_spinner=True)
+def load_file_from_s3():
+    """S3에 파일이 있으면 bytes로 읽어온다."""
+    if s3_client is None:
+        return None
+    try:
+        obj = s3_client.get_object(Bucket=S3_BUCKET, Key=S3_KEY)
+        return obj["Body"].read()
+    except ClientError as e:
+        code = e.response["Error"]["Code"]
+        if code in ("NoSuchKey", "404"):
+            return None
+        st.error(f"S3에서 파일을 가져오는 중 오류가 발생했습니다: {e}")
+        return None
 
 # PDF 생성용 (reportlab 없는 환경에서도 앱이 죽지 않도록 처리)
 try:
@@ -48,46 +70,12 @@ except ModuleNotFoundError:
 st.set_page_config(page_title="부자재 입고 / 환입 관리", layout="wide")
 
 # -----------------------------
-# S3 설정
-# -----------------------------
-S3_BUCKET = "your-bucket-name"  # 실제 버킷명으로 변경
-S3_KEY = "bulk-management/2025_부자재_관리대장.xlsm"  # 항상 덮어쓸 키 경로
-
-def get_s3_client():
-    """
-    S3 클라이언트 생성.
-    - 실제로는 st.secrets에 aws 자격증명 넣어두고 사용하는 걸 추천.
-    """
-    if "aws" in st.secrets:
-        return boto3.client(
-            "s3",
-            aws_access_key_id=st.secrets["aws"]["access_key_id"],
-            aws_secret_access_key=st.secrets["aws"]["secret_access_key"],
-            region_name=st.secrets["aws"]["region"],
-        )
-    else:
-        # 로컬 개발용: 환경변수나 ~/.aws/credentials 를 사용
-        return boto3.client("s3")
-
-def load_from_s3():
-    """S3에 저장된 최신 관리대장 파일을 BytesIO로 가져오기"""
-    s3 = get_s3_client()
-    buffer = io.BytesIO()
-    try:
-        s3.download_fileobj(S3_BUCKET, S3_KEY, buffer)
-        buffer.seek(0)
-        return buffer
-    except ClientError:
-        st.warning("S3에서 기존 관리대장 파일을 찾지 못했습니다. 새 파일을 업로드해주세요.")
-        return None
-
-# -----------------------------
 # 유틸 함수
 # -----------------------------
 @st.cache_data
-def load_excel(file):
-    """UploadedFile 또는 BytesIO 객체를 그대로 사용해서 빠르게 읽기"""
-    xls = pd.ExcelFile(file)
+def load_excel(file_bytes: bytes):
+    """bytes 또는 파일 객체를 받아 전체 시트를 dict로 반환"""
+    xls = pd.ExcelFile(file_bytes)
     sheets = {}
     for sheet_name in xls.sheet_names:
         try:
@@ -347,7 +335,7 @@ def build_aggregates(df_in_raw, df_job_raw, df_result_raw, df_defect_raw, df_sto
     stock_wc_col = pick_col(df_stock_raw, "A", ["작업장"])
     stock_part_col = pick_col(df_stock_raw, "D", ["품번"])
 
-    # ERP재고는 반드시 "실재고수량" 컬럼을 우선 사용
+    # ERP재고는 반드시 "실재고수량" 컬럼을 사용 (없으면 N열 fallback)
     if "실재고수량" in df_stock_raw.columns:
         stock_qty_col = "실재고수량"
     else:
@@ -466,7 +454,6 @@ def recalc_return_expectation(df_return, aggs):
             df[col] = None
 
     out = df[CSV_COLS].copy()
-
     return out
 
 
@@ -509,7 +496,7 @@ if REPORTLAB_AVAILABLE:
             [
                 ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
                 ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
-                ("ALIGN", (0, 0), (-1, -1), "LEFT"),  # 표 왼쪽정렬
+                ("ALIGN", (0, 0), (-1, -1), "LEFT"),
                 ("FONTNAME", (0, 0), (-1, -1), KOREAN_FONT_NAME),
                 ("FONTSIZE", (0, 0), (-1, -1), 8),
                 ("BOTTOMPADDING", (0, 0), (-1, 0), 6),
@@ -559,56 +546,48 @@ else:
 
 
 # -----------------------------
-# 메인: 엑셀 파일 업로드 (S3 연동)
+# 메인 화면
 # -----------------------------
 st.title("부자재 입고 / 환입 관리")
 
-uploaded_file = st.file_uploader(
-    "📂 2025년 부자재 관리대장 파일을 업로드하세요", type=["xlsm", "xlsx"]
+menu = st.radio(
+    "메뉴 선택",
+    ["📤 파일 업로드", "📦 입고 조회", "🔍 수주 찾기", "↩️ 환입 관리"],
+    horizontal=True,
 )
 
-file_bytes = None
+# ==========================================
+# 📤 1. 파일 업로드 탭 (S3에 저장)
+# ==========================================
+if menu == "📤 파일 업로드":
+    st.subheader("📤 2025년 부자재 관리대장 업로드")
 
-# 1) 사용자가 새 파일을 올렸을 때: S3에 put_object 로 업로드 + 이 세션에서 사용
-if uploaded_file is not None:
-    file_bytes = uploaded_file.getvalue()
+    uploaded_file = st.file_uploader("파일 업로드", type=["xlsm", "xlsx"])
 
-    if S3_AVAILABLE:
+    if uploaded_file and s3_client is not None:
         try:
-            s3 = boto3.client("s3")
-            # 🔥 멀티파트 업로드가 아닌, 단일 PUT 으로 업로드 (CreateMultipartUpload 권한 불필요)
-            s3.put_object(
-                Bucket=S3_BUCKET_NAME,
-                Key=S3_OBJECT_KEY,
-                Body=file_bytes,
-            )
-            st.success("S3에 관리대장 파일을 업로드(교체) 했습니다.")
-        except ClientError as e:
-            st.error(f"S3 업로드 중 오류가 발생했습니다: {e}")
-    else:
-        st.info("boto3 모듈이 없어 S3에는 저장하지 못했습니다. (requirements.txt 에 boto3 추가 필요)")
+            s3_client.upload_fileobj(uploaded_file, S3_BUCKET, S3_KEY)
+            # 캐시 초기화
+            load_file_from_s3.clear()
+            load_excel.clear()
+            st.success("S3 업로드 완료! 다른 탭에서 데이터 조회 가능합니다.")
+        except Exception as e:
+            st.error(f"S3 업로드 중 오류 발생: {e}")
+    elif uploaded_file and s3_client is None:
+        st.error("S3 클라이언트가 초기화되지 않았습니다. secrets 설정을 확인해주세요.")
 
-# 2) 새로 올린 파일이 없으면: S3 에서 기존 파일을 불러오기 시도
-elif S3_AVAILABLE:
-    try:
-        s3 = boto3.client("s3")
-        obj = s3.get_object(Bucket=S3_BUCKET_NAME, Key=S3_OBJECT_KEY)
-        file_bytes = obj["Body"].read()
-        st.info("S3에 저장된 기존 관리대장 파일을 불러왔습니다.")
-    except ClientError as e:
-        code = e.response.get("Error", {}).get("Code")
-        if code in ("NoSuchKey", "404", "NotFound"):
-            st.warning("S3에서 기존 관리대장 파일을 찾지 못했습니다. 새 파일을 업로드해주세요.")
-        else:
-            st.error(f"S3에서 파일을 가져오는 중 오류가 발생했습니다: {e}")
+    st.stop()  # 업로드 탭에서는 여기서 종료
 
-# 3) 둘 다 없으면 진행 불가
+
+# ==========================================
+# 나머지 탭: S3에서 파일 로딩
+# ==========================================
+file_bytes = load_file_from_s3()
 if file_bytes is None:
+    st.warning("S3에 업로드된 관리대장 파일이 없습니다. 먼저 [📤 파일 업로드] 탭에서 파일을 올려주세요.")
     st.stop()
 
-# 4) 최종적으로 확보한 bytes 를 엑셀로 읽기
-sheets = load_excel(io.BytesIO(file_bytes))
-
+sheets = load_excel(file_bytes)
 
 # 필수 시트 체크
 required_sheets = ["입고", "작업지시", "수주", "BOM", "재고", "생산실적", "불량"]
@@ -625,24 +604,108 @@ df_stock_raw = sheets["재고"]
 df_result_raw = sheets["생산실적"]
 df_defect_raw = sheets["불량"]
 
-# 집계는 나중에 버튼 눌렀을 때 계산
+# 집계는 환입 데이터 불러오기 시 최초 1회
 if "aggregates" not in st.session_state:
     st.session_state["aggregates"] = None
 
-# -----------------------------
-# 메뉴
-# -----------------------------
-menu = st.radio(
-    "메뉴 선택",
-    ["수주 찾기", "환입 관리", "입고 조회"],
-    horizontal=True,
-    key="main_menu",
-)
 
 # ============================================================
-# 1. 수주 찾기 화면
+# 📦 2. 입고 조회 화면
 # ============================================================
-if menu == "수주 찾기":
+if menu == "📦 입고 조회":
+    st.subheader("📦 입고 조회")
+
+    # 입고 시트 컬럼 매핑
+    in_req_date_col = pick_col(df_in_raw, "K", ["요청날짜"])
+    in_req_no_col   = pick_col(df_in_raw, "L", ["요청번호"])
+    in_part_col     = pick_col(df_in_raw, "M", ["품번"])
+    in_name_col     = pick_col(df_in_raw, "O", ["품명"])
+    in_req_qty_col  = pick_col(df_in_raw, "P", ["요청수량"])
+    in_erp_qty_col  = pick_col(df_in_raw, "Q", ["불출수량", "ERP불출수량"])
+    in_real_in_col  = pick_col(df_in_raw, "R", ["현장실물입고"])
+
+    needed = [
+        ("요청날짜", in_req_date_col),
+        ("요청번호", in_req_no_col),
+        ("품번", in_part_col),
+        ("품명", in_name_col),
+        ("요청수량", in_req_qty_col),
+        ("불출수량", in_erp_qty_col),
+        ("현장실물입고", in_real_in_col),
+    ]
+    missing_cols = [label for label, col in needed if col is None]
+    if missing_cols:
+        st.error(
+            "입고 시트에서 다음 컬럼을 찾지 못했습니다: "
+            + ", ".join(missing_cols)
+            + " (열 위치나 컬럼명을 한 번 확인해주세요.)"
+        )
+        st.stop()
+
+    # 기본 날짜: 어제 ~ 오늘
+    today = date.today()
+    yesterday = today - timedelta(days=1)
+
+    st.markdown("**요청날짜 기준으로 입고 내역을 조회합니다.**")
+    date_range = st.date_input(
+        "요청날짜 범위 선택",
+        value=(yesterday, today),
+        key="inbound_date_range",
+    )
+
+    # Streamlit이 단일 날짜만 반환하는 경우 처리
+    if isinstance(date_range, tuple):
+        start_date, end_date = date_range
+    else:
+        start_date = end_date = date_range
+
+    df_in = df_in_raw.copy()
+    df_in[in_req_date_col] = pd.to_datetime(
+        df_in[in_req_date_col], errors="coerce"
+    ).dt.date
+
+    mask = df_in[in_req_date_col].between(start_date, end_date)
+    df_filtered = df_in[mask].copy()
+
+    if df_filtered.empty:
+        st.info("선택한 기간에 해당하는 입고 데이터가 없습니다.")
+    else:
+        df_show = df_filtered[
+            [
+                in_req_date_col,
+                in_req_no_col,
+                in_part_col,
+                in_name_col,
+                in_req_qty_col,
+                in_erp_qty_col,
+                in_real_in_col,
+            ]
+        ].copy()
+        df_show.columns = [
+            "요청날짜",
+            "요청번호",
+            "품번",
+            "품명",
+            "요청수량",
+            "불출수량",
+            "현장실물입고",
+        ]
+
+        st.markdown("#### 조회 결과")
+        st.dataframe(df_show, use_container_width=True)
+
+        csv_inbound = df_show.to_csv(index=False).encode("utf-8-sig")
+        st.download_button(
+            "📥 이 조회 결과를 CSV로 받기",
+            data=csv_inbound,
+            file_name=f"입고조회_{start_date}_{end_date}.csv",
+            mime="text/csv",
+        )
+
+# ============================================================
+# 🔍 3. 수주 찾기 화면
+# ============================================================
+if menu == "🔍 수주 찾기":
     st.subheader("🔍 수주 찾기")
 
     st.markdown(
@@ -681,7 +744,7 @@ if menu == "수주 찾기":
             if "품명" in bom_cols
             else (bom_cols[1] if len(bom_cols) > 1 else bom_cols[0])
         )
-        # C열 = 0-index 2 (자재 품번)
+        # C열 = 자재 품번
         bom_component_col = (
             bom_cols[2]
             if len(bom_cols) > 2
@@ -878,9 +941,9 @@ if menu == "수주 찾기":
                             )
 
 # ============================================================
-# 2. 환입 관리 화면 (+ 환입 예상재고)
+# ↩️ 4. 환입 관리 화면 (+ 환입 예상재고)
 # ============================================================
-if menu == "환입 관리":
+if menu == "↩️ 환입 관리":
     st.subheader("↩️ 환입 관리")
 
     # 환입 관리 테이블 구조 (내부 계산용)
@@ -1291,7 +1354,7 @@ if menu == "환입 관리":
                     else:
                         row[col] = 0
 
-                # 단위수량: 합치지 않고 대표값만
+                # 단위수량: 합치지 않고 대표값 only
                 row[unit_col] = safe_num(header_row.get(unit_col, 0))
 
                 # ERP재고: 같은 품번이면 동일 → 대표값만
@@ -1366,98 +1429,3 @@ if menu == "환입 관리":
                         st.markdown(
                             f"- **{row['품번']} / {row['품명']}** : {row['비고2']}"
                         )
-# ============================================================
-# 3. 입고 조회 화면
-# ============================================================
-if menu == "입고 조회":
-    st.subheader("📦 입고 조회")
-
-    # 입고 시트에서 필요한 컬럼 매핑
-    in_req_date_col = pick_col(df_in_raw, "K", ["요청날짜"])
-    in_req_no_col   = pick_col(df_in_raw, "L", ["요청번호"])
-    in_part_col     = pick_col(df_in_raw, "M", ["품번"])
-    in_name_col     = pick_col(df_in_raw, "O", ["품명"])
-    in_req_qty_col  = pick_col(df_in_raw, "P", ["요청수량"])
-    in_erp_qty_col  = pick_col(df_in_raw, "Q", ["불출수량", "ERP불출수량"])
-    in_real_in_col  = pick_col(df_in_raw, "R", ["현장실물입고"])
-
-    needed = [
-        ("요청날짜", in_req_date_col),
-        ("요청번호", in_req_no_col),
-        ("품번", in_part_col),
-        ("품명", in_name_col),
-        ("요청수량", in_req_qty_col),
-        ("불출수량", in_erp_qty_col),
-        ("현장실물입고", in_real_in_col),
-    ]
-
-    missing_cols = [label for label, col in needed if col is None]
-    if missing_cols:
-        st.error(
-            "입고 시트에서 다음 컬럼을 찾지 못했습니다: "
-            + ", ".join(missing_cols)
-            + "  (열 위치나 컬럼명을 한 번 확인해주세요.)"
-        )
-        st.stop()
-
-    # 기본 날짜: 어제 ~ 오늘
-    today = date.today()
-    yesterday = today - timedelta(days=1)
-
-    st.markdown("**요청날짜 기준으로 입고 내역을 조회합니다.**")
-    start_date, end_date = st.date_input(
-        "요청날짜 범위 선택",
-        value=(yesterday, today),
-        key="inbound_date_range",
-    )
-
-    # 단일 날짜 선택 방어 (Streamlit이 한 날짜만 반환하는 경우 대비)
-    if isinstance(start_date, date) and not isinstance(end_date, date):
-        start_date, end_date = start_date, start_date
-
-    # 데이터 가공
-    df_in = df_in_raw.copy()
-    df_in[in_req_date_col] = pd.to_datetime(
-        df_in[in_req_date_col], errors="coerce"
-    ).dt.date
-
-    mask = df_in[in_req_date_col].between(start_date, end_date)
-    df_filtered = df_in[mask].copy()
-
-    if df_filtered.empty:
-        st.info("선택한 기간에 해당하는 입고 데이터가 없습니다.")
-    else:
-        df_show = df_filtered[
-            [
-                in_req_date_col,
-                in_req_no_col,
-                in_part_col,
-                in_name_col,
-                in_req_qty_col,
-                in_erp_qty_col,
-                in_real_in_col,
-            ]
-        ].copy()
-
-        # 컬럼명 보기 좋게 변경
-        df_show.columns = [
-            "요청날짜",
-            "요청번호",
-            "품번",
-            "품명",
-            "요청수량",
-            "불출수량",
-            "현장실물입고",
-        ]
-
-        st.markdown("#### 조회 결과")
-        st.dataframe(df_show, use_container_width=True)
-
-        # 필요하면 CSV로도 받을 수 있게 옵션
-        csv_inbound = df_show.to_csv(index=False).encode("utf-8-sig")
-        st.download_button(
-            "📥 이 조회 결과를 CSV로 받기",
-            data=csv_inbound,
-            file_name=f"입고조회_{start_date}_{end_date}.csv",
-            mime="text/csv",
-        )
