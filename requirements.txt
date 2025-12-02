@@ -1,0 +1,7 @@
+streamlit
+pandas
+openpyxl
+reportlab
+boto3
+botocore
+python-dateutil
