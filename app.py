@@ -1288,7 +1288,8 @@ if menu == "↩️ 환입 관리":
 
             bom_component_df = pd.DataFrame(
                 {
-                    "선택": True,
+                    # ✅ 기본은 모두 미선택(False) 상태로 시작
+                    "선택": False,
                     "완성품번": df_bom_fin_uniq[item_col],
                     "품번": df_bom_fin_uniq[bom_component_col2]
                     if bom_component_col2 in df_bom_fin_uniq.columns
@@ -1310,6 +1311,18 @@ if menu == "↩️ 환입 관리":
                 key="bom_component_editor",
             )
 
+            # ✅ 혹시 모를 NaN → False 처리 + bool 강제
+            if "선택" in bom_component_df.columns:
+                bom_component_df["선택"] = bom_component_df["선택"].fillna(False).astype(bool)
+
+                        st.markdown("BOM 자재 목록에서 환입 대상 자재를 선택하세요.")
+                        bom_component_df = st.data_editor(
+                           bom_component_df,
+                            use_container_width=True,
+                            num_rows="dynamic",
+                            key="bom_component_editor",
+                        )
+
     # ----- 환입 데이터 불러오기 버튼 -----
     if st.button(
         "✅ 환입 데이터 불러오기",
@@ -1322,9 +1335,17 @@ if menu == "↩️ 환입 관리":
         elif bom_component_df.empty:
             st.error("BOM 자재 목록이 없습니다.")
         else:
-            selected_rows = bom_component_df[bom_component_df["선택"] == True].copy()
+            # 선택 컬럼 NaN → False, bool 강제
+            bom_component_df["선택"] = bom_component_df["선택"].fillna(False).astype(bool)
+
+            # 체크된 행만 가져오기
+            selected_rows = bom_component_df[bom_component_df["선택"]].copy()
+
             if selected_rows.empty:
                 st.warning("선택된 자재가 없습니다. 최소 1개 선택해주세요.")
+            else:
+                # 여기에 new_rows 생성 등 기존 처리 이어서 진행
+                ...
             else:
                 new_rows = []
                 for _, row in selected_rows.iterrows():
