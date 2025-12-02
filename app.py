@@ -1515,52 +1515,25 @@ if menu == "↩️ 환입 관리":
         # PDF 받기 버튼 (최종 CSV용 데이터 기준)
         if REPORTLAB_AVAILABLE and not csv_export_df.empty:
 
-            st.markdown("### 📎 PDF에 넣을 스크린샷 또는 텍스트를 붙여넣기(Ctrl+V) 하세요")
+            st.markdown("### 📎 PDF 상단에 들어갈 메모를 입력하거나 붙여넣기(Ctrl+V) 하세요")
 
-            clipboard_raw = st.text_area(
-                "붙여넣기 입력",
+            pasted_text = st.text_area(
+                "PDF 메모",
                 height=100,
-                key="clipboard_mixed_input",
-                placeholder="여기에 스크린샷 또는 텍스트를 Ctrl+V로 붙여넣으세요."
+                key="pdf_note_text",
+                placeholder="여기에 메모나 특이사항을 입력/붙여넣기 하세요."
             )
 
-            uploaded_image = None
-            pasted_text = None
+            # 텍스트만 사용해서 PDF 생성 (이미지는 사용 안 함)
+            pdf_bytes = generate_pdf(csv_export_df, pasted_text=pasted_text)
 
-            if clipboard_raw:
-                import re
-                import base64
-                from io import BytesIO
+            st.download_button(
+                "📄 PDF 받기",
+                data=pdf_bytes,
+                file_name="환입_예상재고.pdf",
+                mime="application/pdf",
+            )
 
-                # 📌 이미지(base64)인지 확인
-                match = re.search(
-                    r"data:image/(png|jpeg|jpg);base64,([A-Za-z0-9+/=]+)",
-                    clipboard_raw
-                )
-
-                if match:
-                    # 이미지를 base64 → BytesIO 변환
-                    img_data = match.group(2)
-                    uploaded_image = BytesIO(base64.b64decode(img_data))
-                else:
-                    # 이미지가 아니면 일반 텍스트로 처리
-                    pasted_text = clipboard_raw
-
-            # ---------------------
-            # PDF 생성 버튼
-            # ---------------------
-            if st.button("📄 PDF 받기"):
-
-                pdf_bytes = generate_pdf(csv_export_df, uploaded_image, pasted_text)
-
-                st.download_button(
-                    "PDF 다운로드",
-                    data=pdf_bytes,
-                    file_name="환입_예상재고.pdf",
-                    mime="application/pdf"
-                )
-
-        
         elif not REPORTLAB_AVAILABLE:
             st.info("PDF 저장 기능을 쓰려면 `pip install reportlab` 설치가 필요합니다.")
 
