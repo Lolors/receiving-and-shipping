@@ -331,31 +331,25 @@ def build_aggregates(df_in_raw, df_job_raw, df_result_raw, df_defect_raw, df_sto
             columns=["지시번호", "품번", "원불", "작불"]
         )
 
-    # === 5) 재고 집계: 품번별 ERP재고 (작업장 WC501~WC504) ===
-    stock_wc_col = pick_col(df_stock_raw, "A", ["작업장"])
+    # === 5) 재고 집계: 품번별 ERP재고
+    # 재고 시트에서 품번(D열)을 기준으로 검색하여,
+    # 해당 행의 N열 값을 ERP재고로 사용
     stock_part_col = pick_col(df_stock_raw, "D", ["품번"])
+    stock_qty_col = pick_col(df_stock_raw, "N", ["ERP재고", "실재고수량"])
 
-    # ERP재고는 반드시 "실재고수량" 컬럼을 사용 (없으면 N열 fallback)
-    if "실재고수량" in df_stock_raw.columns:
-        stock_qty_col = "실재고수량"
-    else:
-        stock_qty_col = pick_col(df_stock_raw, "N", ["실재고수량"])
+    if stock_part_col and stock_qty_col:
+        df_stock = df_stock_raw[[stock_part_col, stock_qty_col]].copy()
+        df_stock.columns = ["품번", "ERP재고"]
 
-    if stock_wc_col and stock_part_col and stock_qty_col:
-        df_stock = df_stock_raw[
-            [stock_wc_col, stock_part_col, stock_qty_col]
-        ].copy()
-        df_stock.columns = ["작업장", "품번", "실재고수량"]
-        df_stock = df_stock[df_stock["작업장"].isin(["WC501", "WC502", "WC503", "WC504"])]
-        if not df_stock.empty:
-            agg_stock = (
-                df_stock.groupby("품번", as_index=False)["실재고수량"]
-                .sum()
-                .rename(columns={"실재고수량": "ERP재고"})
-            )
-            aggregates["stock"] = agg_stock
-        else:
-            aggregates["stock"] = pd.DataFrame(columns=["품번", "ERP재고"])
+        # 숫자 변환 (문자/NaN 방어)
+        df_stock["ERP재고"] = df_stock["ERP재고"].apply(safe_num)
+
+        # 같은 품번이 여러 행이면 N열 값들을 합계
+        agg_stock = (
+            df_stock.groupby("품번", as_index=False)["ERP재고"]
+            .sum()
+        )
+        aggregates["stock"] = agg_stock
     else:
         aggregates["stock"] = pd.DataFrame(columns=["품번", "ERP재고"])
 
