@@ -417,7 +417,7 @@ def recalc_return_expectation(df_return, aggs):
         on="지시번호",
     )
 
-    # 3) 생산실적 집계 붙이기: 생산수량 (수주번호)
+    # 3) 생산실적 집계 붙이기: 생산수량, QC샘플, 기타샘플 (수주번호 기준)
     df = df.merge(
         aggs["result"],
         how="left",
