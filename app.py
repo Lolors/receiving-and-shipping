@@ -246,46 +246,30 @@ def build_aggregates(df_in_raw, df_job_raw, df_result_raw, df_defect_raw, df_sto
     else:
         aggregates["job"] = pd.DataFrame(columns=["지시번호", "지시수량"])
 
-    # === 3) 생산실적 집계: 지시번호(작지번호)별 생산/샘플 수량 ===
-    res_jisi_col = (
-        "작지번호"
-        if "작지번호" in df_result_raw.columns
-        else pick_col(df_result_raw, "H", ["작지번호"])
-    )
-    res_sum_col = (
-        "합계"
-        if "합계" in df_result_raw.columns
-        else pick_col(df_result_raw, "AD", ["합계"])
-    )
-    res_qc_col = (
-        "QC샘플"
-        if "QC샘플" in df_result_raw.columns
-        else pick_col(df_result_raw, "AG", ["QC샘플"])
-    )
-    res_etc_col = (
-        "기타샘플"
-        if "기타샘플" in df_result_raw.columns
-        else pick_col(df_result_raw, "AH", ["기타샘플"])
+    # === 3) 생산실적 집계: 수주번호별 양품 합계 ===
+    res_suju_col = (
+        "수주번호"
+        if "수주번호" in df_result_raw.columns
+        else pick_col(df_result_raw, "E", ["수주번호"])
     )
 
-    cols_res = [res_jisi_col, res_sum_col, res_qc_col, res_etc_col]
-    if res_jisi_col and any(cols_res[1:]):
-        df_res = df_result_raw[[c for c in cols_res if c is not None]].copy()
-        rename_map = {}
-        if res_jisi_col:
-            rename_map[res_jisi_col] = "지시번호"
-        if res_sum_col:
-            rename_map[res_sum_col] = "생산수량"
-        if res_qc_col:
-            rename_map[res_qc_col] = "QC샘플"
-        if res_etc_col:
-            rename_map[res_etc_col] = "기타샘플"
-        df_res = df_res.rename(columns=rename_map)
-        agg_res = df_res.groupby("지시번호", as_index=False).agg("sum")
+    # 양품 컬럼 자동 탐색
+    res_good_col = None
+    for cand in ["양품", "양품수량", "양품수", "합격", "생산수량"]:
+        if cand in df_result_raw.columns:
+            res_good_col = cand
+            break
+
+    if res_suju_col and res_good_col:
+        df_res = df_result_raw[[res_suju_col, res_good_col]].copy()
+        df_res.columns = ["수주번호", "생산수량"]
+
+        # 수주번호별 양품 합계
+        agg_res = df_res.groupby("수주번호", as_index=False).agg({"생산수량": "sum"})
         aggregates["result"] = agg_res
     else:
         aggregates["result"] = pd.DataFrame(
-            columns=["지시번호", "생산수량", "QC샘플", "기타샘플"]
+            columns=["수주번호", "생산수량"]
         )
 
     # === 4) 불량 집계: [지시번호, 품번]별 원불/작불 수량 ===
@@ -405,12 +389,11 @@ def recalc_return_expectation(df_return, aggs):
         on="지시번호",
     )
 
-    # 3) 생산실적 집계 붙이기: 생산수량, QC샘플, 기타샘플 (지시번호)
+    # 3) 생산실적 집계 붙이기: 생산수량 (수주번호)
     df = df.merge(
         aggs["result"],
         how="left",
-        on="지시번호",
-        suffixes=("", "_res"),
+        on="수주번호"
     )
 
     # 4) 불량 집계 붙이기: 원불, 작불 ([지시번호, 품번])
