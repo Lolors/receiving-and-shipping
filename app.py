@@ -58,22 +58,25 @@ try:
 
     KOREAN_FONT_NAME = "MalgunGothic"
 
-    # app.py 위치 기준으로 절대 경로 만들기
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    FONT_PATH = os.path.join(BASE_DIR, "font", "malgun.ttf")
+    # 🔹 app.py 기준으로 font/malgun.ttf 절대 경로 만들기
+    FONT_PATH = os.path.join(os.path.dirname(__file__), "font", "malgun.ttf")
 
-    try:
-        pdfmetrics.registerFont(TTFont(KOREAN_FONT_NAME, FONT_PATH))
-        print("폰트 로딩 성공:", FONT_PATH)
-    except Exception as e:
-        print("폰트 로딩 실패:", e)
+    if not os.path.exists(FONT_PATH):
+        st.write("⚠️ 폰트 파일을 찾지 못했습니다:", FONT_PATH)
         KOREAN_FONT_NAME = "Helvetica"
-
+    else:
+        try:
+            pdfmetrics.registerFont(TTFont(KOREAN_FONT_NAME, FONT_PATH))
+            st.write("✅ PDF 폰트 로딩 성공:", FONT_PATH)
+        except Exception as e:
+            st.write("⚠️ 폰트 로딩 실패:", repr(e))
+            KOREAN_FONT_NAME = "Helvetica"
 
     REPORTLAB_AVAILABLE = True
 except ModuleNotFoundError:
     REPORTLAB_AVAILABLE = False
     KOREAN_FONT_NAME = "Helvetica"
+
 
 st.set_page_config(page_title="부자재 입고 / 환입 관리", layout="wide")
 
