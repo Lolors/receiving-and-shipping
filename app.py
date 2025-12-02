@@ -1169,13 +1169,27 @@ if menu == "↩️ 환입 관리":
 
     if suju_no:
         if "수주번호" in df_job_raw.columns:
-            df_job_suju = df_job_raw[df_job_raw["수주번호"] == suju_no].copy()
+            # 1) 수주번호 기준 1차 필터
+            df_job_suju = df_job_raw[
+                df_job_raw["수주번호"].astype(str) == str(suju_no)
+            ].copy()
+
+            # 2) 위에서 사용자가 고른 지시번호가 있으면 그걸로 2차 필터
+            current_jisi = st.session_state.get("return_jisi")
+            if current_jisi and "지시번호" in df_job_suju.columns:
+                df_job_suju = df_job_suju[
+                    df_job_suju["지시번호"].astype(str) == str(current_jisi)
+                ].copy()
+
+            # 🔹 이제 df_job_suju에는
+            #   "내가 위에서 선택한 수주 / 지시"에 해당하는 행만 남도록 제한됨
 
             finished_parts = (
                 df_job_suju["품번"].dropna().unique().tolist()
                 if "품번" in df_job_suju.columns
                 else []
             )
+
             if len(finished_parts) > 1:
                 finished_part_selected = st.selectbox(
                     "완성품번", finished_parts, key="return_finished_part"
@@ -1186,12 +1200,20 @@ if menu == "↩️ 환입 관리":
             elif len(finished_parts) == 1:
                 finished_part_selected = finished_parts[0]
 
+            # 지시번호 선택 박스에 들어갈 후보 목록 (그래도 한 번 더 채움)
             if "지시번호" in df_job_suju.columns:
-                jisi_options = df_job_suju["지시번호"].dropna().unique().tolist()
+                jisi_options = (
+                    df_job_suju["지시번호"]
+                    .dropna()
+                    .astype(str)
+                    .unique()
+                    .tolist()
+                )
             else:
                 st.error("작업지시 시트에 '지시번호' 컬럼이 없습니다.")
         else:
             st.error("작업지시 시트에 '수주번호' 컬럼이 없습니다.")
+
 
     # 지시번호 선택 (수주번호 입력 후)
     if jisi_options:
