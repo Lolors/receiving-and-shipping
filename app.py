@@ -1344,9 +1344,6 @@ if menu == "↩️ 환입 관리":
             if selected_rows.empty:
                 st.warning("선택된 자재가 없습니다. 최소 1개 선택해주세요.")
             else:
-                # 여기에 new_rows 생성 등 기존 처리 이어서 진행
-                ...
-            else:
                 new_rows = []
                 for _, row in selected_rows.iterrows():
                     part = row["품번"]
