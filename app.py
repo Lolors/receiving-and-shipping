@@ -1496,22 +1496,22 @@ if menu == "↩️ 환입 관리":
             # 📎 PDF에 넣을 스크린샷 붙여넣기
             st.markdown("### 📎 PDF에 넣을 스크린샷을 붙여넣기(Ctrl+V) 하세요")
 
-            clipboard_img = st.text_area(
+            clipboard_img_pdf = st.text_area(
                 "스크린샷 붙여넣기",
                 height=150,
-                key="clipboard_image_box",
+                key="clipboard_image_box_pdf",   # 🔥 key 충돌 방지
                 placeholder="여기에 스크린샷을 Ctrl+V로 붙여넣으세요."
             )
 
             uploaded_image = None
-            if clipboard_img:
+            if clipboard_img_pdf:
                 import re
                 import base64
                 from io import BytesIO
 
                 match = re.search(
                     r"data:image/(png|jpeg|jpg);base64,([A-Za-z0-9+/=]+)",
-                    clipboard_img,
+                    clipboard_img_pdf,
                 )
                 if match:
                     img_data = match.group(2)
