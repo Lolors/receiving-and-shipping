@@ -457,76 +457,102 @@ def recalc_return_expectation(df_return, aggs):
     return out
 
 
+# ----
+# 클립보드 기반 스크린샷
+# ----
+
+st.markdown("### 📎 PDF에 넣을 스크린샷을 붙여넣기(Ctrl+V) 하세요")
+
+clipboard_img = st.text_area(
+    "여기에 스크린샷을 붙여넣으세요",
+    height=150,
+    key="clipboard_image_box",
+    placeholder="스크린샷을 Ctrl+V로 붙여넣으면 자동으로 이미지가 인식됩니다."
+)
+
+uploaded_image = None
+if clipboard_img:
+    import re
+    import base64
+    from io import BytesIO
+
+    # base64 이미지 검출
+    match = re.search(r"data:image/(png|jpeg|jpg);base64,([A-Za-z0-9+/=]+)", clipboard_img)
+    if match:
+        img_data = match.group(2)
+        uploaded_image = BytesIO(base64.b64decode(img_data))
+    else:
+        st.warning("유효한 이미지(base64)를 찾지 못했습니다. 스크린샷을 다시 붙여넣어주세요.")
+
 # -----------------------------
 # PDF 생성 함수
 # -----------------------------
 if REPORTLAB_AVAILABLE:
-    def generate_pdf(df_export: pd.DataFrame) -> bytes:
+    def generate_pdf(df_export: pd.DataFrame, uploaded_image=None) -> bytes:
         """
-        최종 CSV용 데이터프레임(df_export)을 받아 PDF를 만든다.
+        PDF를 ANSI 인코딩으로 저장하고,
+        제목과 표의 내용을 모두 왼쪽 정렬로 출력한다.
+        필요 시 클립보드에서 붙여넣은 이미지를 PDF 상단에 추가한다.
+        """
+        import io
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
+        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib import colors
 
-        - 상단 제목: "수주번호 완성품명"
-          (df_export에서 첫 번째 수주번호 / 완성품명 사용, 대괄호 X)
-          폰트 크기 15pt
-        - 본문: [품번, 품명, 작불, 예상재고, ERP재고] 5개 열만 출력
-        - 용지 방향: 가로, 한글 폰트 사용 시도
-        - 제목과 표는 왼쪽 정렬
-        """
         buffer = io.BytesIO()
 
         doc = SimpleDocTemplate(
             buffer,
-            pagesize=landscape(A4),  # 가로 방향
-            rightMargin=20,
+            pagesize=landscape(A4),
             leftMargin=20,
+            rightMargin=20,
             topMargin=20,
             bottomMargin=20,
         )
 
         styles = getSampleStyleSheet()
+
         title_style = ParagraphStyle(
-            "Title15",
+            "TitleStyle",
             parent=styles["Heading1"],
             fontName=KOREAN_FONT_NAME,
-            fontSize=15,     # 15pt
-            leading=19,
-            alignment=0,     # LEFT 정렬
+            fontSize=15,
+            alignment=0,   # LEFT
         )
+
         table_style = TableStyle(
             [
                 ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
                 ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
-                ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+                ("ALIGN", (0, 0), (-1, -1), "LEFT"),  # 왼쪽 정렬
                 ("FONTNAME", (0, 0), (-1, -1), KOREAN_FONT_NAME),
                 ("FONTSIZE", (0, 0), (-1, -1), 8),
-                ("BOTTOMPADDING", (0, 0), (-1, 0), 6),
                 ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
             ]
         )
 
         story = []
 
-        # 제목: 수주번호 완성품명 (대괄호 없이)
-        suju_list = (
-            df_export["수주번호"].dropna().astype(str).unique().tolist()
-            if "수주번호" in df_export.columns
-            else []
-        )
-        name_list = (
-            df_export["완성품명"].dropna().astype(str).unique().tolist()
-            if "완성품명" in df_export.columns
-            else []
-        )
+        # 제목 구성
+        suju_list = df_export["수주번호"].dropna().astype(str).unique()
+        name_list = df_export["완성품명"].dropna().astype(str).unique()
+        title_text = f"{suju_list[0] if len(suju_list) else ''} {name_list[0] if len(name_list) else ''}".strip()
 
-        suju_str = suju_list[0] if suju_list else ""
-        name_str = name_list[0] if name_list else ""
-
-        title_text = f"{suju_str} {name_str}".strip()
         story.append(Paragraph(title_text, title_style))
         story.append(Spacer(1, 12))
 
-        # 본문: 품번, 품명, 작불, 예상재고, ERP재고 5개 열만
-        table_cols = [c for c in ["품번", "품명", "작불", "예상재고", "ERP재고"] if c in df_export.columns]
+        # 클립보드 이미지가 있을 경우 PDF 삽입
+        if uploaded_image:
+            try:
+                img = Image(uploaded_image, width=400, height=300)
+                story.append(img)
+                story.append(Spacer(1, 12))
+            except Exception:
+                pass
+
+        # 표 구성
+        table_cols = ["품번", "품명", "작불", "예상재고", "ERP재고"]
         table_data = [table_cols]
 
         for _, row in df_export.iterrows():
@@ -537,11 +563,19 @@ if REPORTLAB_AVAILABLE:
         story.append(table)
 
         doc.build(story)
-        pdf_value = buffer.getvalue()
+
+        # ANSI 인코딩 처리
+        pdf_bytes = buffer.getvalue()
+        try:
+            pdf_ansi = pdf_bytes.decode("latin-1").encode("latin-1")
+        except UnicodeDecodeError:
+            pdf_ansi = pdf_bytes
+
         buffer.close()
-        return pdf_value
+        return pdf_ansi
+
 else:
-    def generate_pdf(df_export: pd.DataFrame) -> bytes:
+    def generate_pdf(df_export: pd.DataFrame, uploaded_image=None) -> bytes:
         raise RuntimeError("reportlab 패키지가 설치되어 있지 않습니다.")
 
 
