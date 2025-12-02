@@ -941,29 +941,6 @@ if menu == "🔍 수주 찾기":
 if menu == "↩️ 환입 관리":
     st.subheader("↩️ 환입 관리")
 
-    # 환입 관리 테이블 구조 (내부 계산용)
-    return_cols = [
-        "수주번호",
-        "지시번호",
-        "생산공정",
-        "생산시작일",
-        "생산종료일",
-        "종료조건",
-        "환입일",
-        "환입주차",
-        "완성품번",
-        "제품명",  # 완성품명
-        "품번",
-        "품명",
-        "단위수량",
-        "ERP재고",
-        "실재고예상",
-        "환입결정수",
-        "차이",
-        "비고",
-    ]
-    df_return = ensure_session_df("환입관리", return_cols)
-    df_full = ensure_session_df("환입재고예상", CSV_COLS)
     # 🔍 수주 검색 (입고 시트 기준)
     st.markdown("### 🔍 수주 검색 (입고 시트 기준)")
 
@@ -1022,25 +999,13 @@ if menu == "↩️ 환입 관리":
 
                 df_show = df_hit[show_cols].copy()
 
-                # 컬럼명 한글로 정리
+                # 🔹 컬럼명 한글로 정리
                 rename_map = {}
                 rename_map[in_req_date_col] = "요청날짜"
                 if in_suju_col:      rename_map[in_suju_col] = "수주번호"
                 if in_jisi_col:      rename_map[in_jisi_col] = "지시번호"
-                if in_prod_name_col: rename_map[in_prod_name_col] = "제품명"
-                if in_part_col:      rename_map[in_part_col] = "품번"
+                if in_prod_
 
-                df_show.rename(columns=rename_map, inplace=True)
-
-                # 중복 줄이기: 수주번호/지시번호/제품명/품번 기준으로 uniq
-                uniq_cols = [c for c in ["요청날짜", "수주번호", "지시번호", "제품명", "품번"] if c in df_show.columns]
-                df_show = df_show.drop_duplicates(subset=uniq_cols)
-
-                # 최근 날짜가 위로 오도록
-                if "요청날짜" in df_show.columns:
-                    df_show = df_show.sort_values("요청날짜", ascending=False)
-
-                st.dataframe(df_show, use_container_width=True)
 
     
     # ----- 입력 1줄 (수주번호, 지시번호, 생산공정, 종료조건) -----
