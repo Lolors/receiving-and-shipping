@@ -1085,6 +1085,39 @@ if menu == "↩️ 환입 관리":
                 # 2) 선택용 목록: 요청날짜 제거 후 중복 제거
                 df_choice = df_show.drop(columns=["요청날짜"], errors="ignore").drop_duplicates()
 
+                # 수주번호/지시번호 둘 다 있어야 자동 채우기 가능
+                if not df_choice.empty and {"수주번호", "지시번호"}.issubset(df_choice.columns):
+                    st.markdown("**이 중 하나를 선택하면 아래 수주번호/지시번호가 자동으로 채워집니다.**")
+
+                    # 옵션 레이블: 수주번호 / 지시번호 / 제품명
+                    choice_labels = [
+                        f"{str(row['수주번호'])} / {str(row['지시번호'])} / {str(row.get('제품명', ''))}"
+                        for _, row in df_choice.iterrows()
+                    ]
+
+                    # 기본 선택 인덱스: 이미 입력된 값(세션)에 맞는 게 있으면 그걸로
+                    default_index = 0
+                    cur_suju = str(st.session_state.get("return_suju_no", "") or "")
+                    cur_jisi = str(st.session_state.get("return_jisi", "") or "")
+                    for i, (_, r) in enumerate(df_choice.iterrows()):
+                        if str(r["수주번호"]) == cur_suju and str(r["지시번호"]) == cur_jisi:
+                            default_index = i
+                            break
+
+                    selected_label = st.selectbox(
+                        "수주 / 지시 선택",
+                        choice_labels,
+                        index=default_index,
+                        key="return_suju_jisi_choice",
+                    )
+
+                    # 선택된 행 찾아서 세션에 반영
+                    sel_idx = choice_labels.index(selected_label)
+                    sel_row = df_choice.iloc[sel_idx]
+
+                    st.session_state["return_suju_no"] = str(sel_row["수주번호"])
+                    st.session_state["return_jisi"] = str(sel_row["지시번호"])
+
                 # 🔽 검색 결과에서 한 행을 선택하면 아래 수주번호/지시번호 자동 채우기
                 if "수주번호" in df_show.columns:
                     df_select = df_show.reset_index(drop=True)
@@ -1105,18 +1138,6 @@ if menu == "↩️ 환입 관리":
                         option_labels.append(label)
                         option_map[label] = (suju_val, jisi_val)
 
-                    selected_label = st.selectbox(
-                        "👇 이 중 하나를 선택하면 아래 수주번호/지시번호가 자동으로 채워집니다.",
-                        ["선택 안 함"] + option_labels,
-                        key="return_suju_autofill",
-                    )
-
-                    if selected_label != "선택 안 함":
-                        sel_suju, sel_jisi = option_map[selected_label]
-                        # 아래 입력칸에 자동 반영
-                        st.session_state["return_suju_no"] = sel_suju
-                        if sel_jisi:
-                            st.session_state["return_jisi"] = sel_jisi
 
     
     # ----- 입력 1줄 (수주번호, 지시번호, 생산공정, 종료조건) -----
