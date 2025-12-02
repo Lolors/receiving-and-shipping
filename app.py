@@ -1513,7 +1513,7 @@ if menu == "↩️ 환입 관리":
 
             clipboard_raw = st.text_area(
                 "붙여넣기 입력",
-                height=200,
+                height=100,
                 key="clipboard_mixed_input",
                 placeholder="여기에 스크린샷 또는 텍스트를 Ctrl+V로 붙여넣으세요."
             )
