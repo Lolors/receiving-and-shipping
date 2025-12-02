@@ -1002,9 +1002,67 @@ if menu == "↩️ 환입 관리":
                 # 🔹 컬럼명 한글로 정리
                 rename_map = {}
                 rename_map[in_req_date_col] = "요청날짜"
-                if in_suju_col:      rename_map[in_suju_col] = "수주번호"
-                if in_jisi_col:      rename_map[in_jisi_col] = "지시번호"
-                if in_prod_
+                if in_suju_col:
+                    rename_map[in_suju_col] = "수주번호"
+                if in_jisi_col:
+                    rename_map[in_jisi_col] = "지시번호"
+                if in_prod_name_col:
+                    rename_map[in_prod_name_col] = "제품명"
+                if in_part_col:
+                    rename_map[in_part_col] = "품번"
+
+                df_show.rename(columns=rename_map, inplace=True)
+
+                # 🔹 중복 제거: 요청날짜/수주번호/지시번호/제품명/품번 기준
+                uniq_cols = [c for c in ["요청날짜", "수주번호", "지시번호", "제품명", "품번"] if c in df_show.columns]
+                if uniq_cols:
+                    df_show = df_show.drop_duplicates(subset=uniq_cols)
+
+                # 🔹 최근 날짜 순으로 정렬
+                if "요청날짜" in df_show.columns:
+                    df_show = df_show.sort_values("요청날짜", ascending=False)
+
+                st.dataframe(df_show, use_container_width=True)
+
+                # =========================
+                # 🔽 검색 결과 선택 → 아래 입력창 자동 채우기
+                # =========================
+                if {"수주번호", "지시번호"}.issubset(df_show.columns):
+                    sel_rows = df_show[["수주번호", "지시번호", "제품명", "품번"]].copy()
+
+                    # 다시 한 번 중복 제거 (수주번호+지시번호 기준)
+                    sel_rows = sel_rows.drop_duplicates(subset=["수주번호", "지시번호"])
+
+                    options = []
+                    label_to_values = {}
+
+                    for _, r in sel_rows.iterrows():
+                        suju = str(r["수주번호"])
+                        jisi = str(r["지시번호"])
+                        prod = str(r.get("제품명", ""))
+                        part = str(r.get("품번", ""))
+
+                        label_items = [suju, jisi]
+                        if prod:
+                            label_items.append(prod)
+                        if part:
+                            label_items.append(part)
+
+                        label = " / ".join(label_items)
+                        options.append(label)
+                        label_to_values[label] = (suju, jisi)
+
+                    selected_label = st.selectbox(
+                        "검색 결과에서 수주번호/지시번호 선택",
+                        options,
+                        key="return_search_choice",
+                    )
+
+                    if st.button("⬇️ 이 수주/지시를 아래 입력에 적용", key="btn_apply_from_search"):
+                        suju_val, jisi_val = label_to_values[selected_label]
+                        st.session_state["return_suju_no"] = suju_val
+                        st.session_state["return_jisi"] = jisi_val
+                        st.success(f"수주번호 {suju_val}, 지시번호 {jisi_val} 를 아래 입력창에 적용했습니다.")
 
 
     
