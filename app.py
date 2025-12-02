@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import date, timedelta
 import io
+import os
 
 # ============ S3 연동 ============
 
@@ -56,13 +57,18 @@ try:
     from reportlab.pdfbase.ttfonts import TTFont
 
     KOREAN_FONT_NAME = "MalgunGothic"
-    FONT_PATH = "font/malgun.ttf"
-    
+
+    # app.py 위치 기준으로 절대 경로 만들기
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    FONT_PATH = os.path.join(BASE_DIR, "font", "malgun.ttf")
+
     try:
         pdfmetrics.registerFont(TTFont(KOREAN_FONT_NAME, FONT_PATH))
+        print("폰트 로딩 성공:", FONT_PATH)
     except Exception as e:
         print("폰트 로딩 실패:", e)
         KOREAN_FONT_NAME = "Helvetica"
+
 
     REPORTLAB_AVAILABLE = True
 except ModuleNotFoundError:
