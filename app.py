@@ -1081,8 +1081,6 @@ if menu == "↩️ 환입 관리":
 
                 st.dataframe(df_show, use_container_width=True)
 
-                    st.dataframe(df_show, use_container_width=True)
-
                 # 🔽 검색 결과에서 한 행을 선택하면 아래 수주번호/지시번호 자동 채우기
                 if "수주번호" in df_show.columns:
                     df_select = df_show.reset_index(drop=True)
