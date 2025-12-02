@@ -1118,6 +1118,27 @@ if menu == "↩️ 환입 관리":
                     st.session_state["return_suju_no"] = str(sel_row["수주번호"])
                     st.session_state["return_jisi"] = str(sel_row["지시번호"])
 
+                # 🔽 검색 결과에서 한 행을 선택하면 아래 수주번호/지시번호 자동 채우기
+                if "수주번호" in df_show.columns:
+                    df_select = df_show.reset_index(drop=True)
+
+                    option_labels = []
+                    option_map = {}
+
+                    for _, row in df_select.iterrows():
+                        suju_val = str(row.get("수주번호", ""))
+                        jisi_val = str(row.get("지시번호", ""))
+                        prod_val = str(row.get("제품명", ""))
+
+                        # 화면에 보여줄 라벨
+                        label = f"{prod_val} | 수주:{suju_val}"
+                        if jisi_val:
+                            label += f" / 지시:{jisi_val}"
+
+                        option_labels.append(label)
+                        option_map[label] = (suju_val, jisi_val)
+
+
     
     # ----- 입력 1줄 (수주번호, 지시번호, 생산공정, 종료조건) -----
     col_suju, col_jisi, col_proc, col_reason = st.columns(4)
@@ -1148,27 +1169,13 @@ if menu == "↩️ 환입 관리":
 
     if suju_no:
         if "수주번호" in df_job_raw.columns:
-            # 1) 수주번호 기준 1차 필터
-            df_job_suju = df_job_raw[
-                df_job_raw["수주번호"].astype(str) == str(suju_no)
-            ].copy()
-
-            # 2) 위에서 사용자가 고른 지시번호가 있으면 그걸로 2차 필터
-            current_jisi = st.session_state.get("return_jisi")
-            if current_jisi and "지시번호" in df_job_suju.columns:
-                df_job_suju = df_job_suju[
-                    df_job_suju["지시번호"].astype(str) == str(current_jisi)
-                ].copy()
-
-            # 🔹 이제 df_job_suju에는
-            #   "내가 위에서 선택한 수주 / 지시"에 해당하는 행만 남도록 제한됨
+            df_job_suju = df_job_raw[df_job_raw["수주번호"] == suju_no].copy()
 
             finished_parts = (
                 df_job_suju["품번"].dropna().unique().tolist()
                 if "품번" in df_job_suju.columns
                 else []
             )
-
             if len(finished_parts) > 1:
                 finished_part_selected = st.selectbox(
                     "완성품번", finished_parts, key="return_finished_part"
@@ -1179,20 +1186,12 @@ if menu == "↩️ 환입 관리":
             elif len(finished_parts) == 1:
                 finished_part_selected = finished_parts[0]
 
-            # 지시번호 선택 박스에 들어갈 후보 목록 (그래도 한 번 더 채움)
             if "지시번호" in df_job_suju.columns:
-                jisi_options = (
-                    df_job_suju["지시번호"]
-                    .dropna()
-                    .astype(str)
-                    .unique()
-                    .tolist()
-                )
+                jisi_options = df_job_suju["지시번호"].dropna().unique().tolist()
             else:
                 st.error("작업지시 시트에 '지시번호' 컬럼이 없습니다.")
         else:
             st.error("작업지시 시트에 '수주번호' 컬럼이 없습니다.")
-
 
     # 지시번호 선택 (수주번호 입력 후)
     if jisi_options:
@@ -1324,10 +1323,58 @@ if menu == "↩️ 환입 관리":
                 key="bom_component_editor",
             )
 
+    # ----- 환입 데이터 불러오기 버튼 -----
+    if st.button(
+        "✅ 환입 데이터 불러오기 (선택된 자재를 환입 예상재고에 반영)",
+        key="btn_return_load",
+    ):
+        if not suju_no:
+            st.error("수주번호를 입력해주세요.")
+        elif not selected_jisi:
+            st.error("지시번호를 선택해주세요.")
+        elif bom_component_df.empty:
+            st.error("BOM 자재 목록이 없습니다.")
+        else:
+            selected_rows = bom_component_df[bom_component_df["선택"] == True].copy()
+            if selected_rows.empty:
+                st.warning("선택된 자재가 없습니다. 최소 1개 선택해주세요.")
+            else:
+                new_rows = []
+                for _, row in selected_rows.iterrows():
+                    part = row["품번"]
+                    name = row["품명"]
+                    unit = row["단위수량"]
+
+                    new_rows.append(
+                        {
+                            "수주번호": suju_no,
+                            "지시번호": selected_jisi,
+                            "생산공정": process_value,
+                            "생산시작일": production_start_date,
+                            "생산종료일": production_end_date,
+                            "종료조건": finish_reason,
+                            "환입일": return_date,
+                            "환입주차": return_week,
+                            "완성품번": finished_part,
+                            "제품명": finished_name,  # 완성품명
+                            "품번": part,
+                            "품명": name,
+                            "단위수량": unit,
+                            "ERP재고": None,
+                            "실재고예상": None,
+                            "환입결정수": None,
+                            "차이": None,
+                            "비고": "",
+                        }
+                    )
+
                 df_new = pd.DataFrame(new_rows)
 
-                # 🔥 이번에 선택한 수주/지시의 BOM만 사용하도록 완전히 교체
-                df_return = df_new.copy()
+                # 기존 + 신규 합쳐서 [수주번호, 지시번호, 품번] 기준 중복 제거
+                df_return = pd.concat([df_return, df_new], ignore_index=True)
+                df_return = df_return.drop_duplicates(
+                    subset=["수주번호", "지시번호", "품번"], keep="last"
+                ).reset_index(drop=True)
                 st.session_state["환입관리"] = df_return
 
                 # 집계가 아직 없으면 여기서 한 번만 계산
@@ -1342,7 +1389,7 @@ if menu == "↩️ 환입 관리":
 
                 aggs = st.session_state["aggregates"]
 
-                # 이번 수주/지시에 대해서만 환입 예상재고 계산
+                # 집계 사용해서 환입 예상재고 계산
                 df_full = recalc_return_expectation(df_return, aggs)
                 st.session_state["환입재고예상"] = df_full
 
