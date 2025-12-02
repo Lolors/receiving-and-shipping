@@ -246,30 +246,58 @@ def build_aggregates(df_in_raw, df_job_raw, df_result_raw, df_defect_raw, df_sto
     else:
         aggregates["job"] = pd.DataFrame(columns=["지시번호", "지시수량"])
 
-    # === 3) 생산실적 집계: 수주번호별 양품 합계 ===
+    # === 3) 생산실적 집계: 수주번호별 양품 / QC샘플 / 기타샘플 합계 ===
+    # 수주번호: 보통 "수주번호" 컬럼 사용
     res_suju_col = (
         "수주번호"
         if "수주번호" in df_result_raw.columns
         else pick_col(df_result_raw, "E", ["수주번호"])
     )
 
-    # 양품 컬럼 자동 탐색
+    # 양품(실제 생산수량) 컬럼 찾기
     res_good_col = None
     for cand in ["양품", "양품수량", "양품수", "합격", "생산수량"]:
         if cand in df_result_raw.columns:
             res_good_col = cand
             break
 
-    if res_suju_col and res_good_col:
-        df_res = df_result_raw[[res_suju_col, res_good_col]].copy()
-        df_res.columns = ["수주번호", "생산수량"]
+    # QC샘플: AG열, 기타샘플: AH열 기준으로 컬럼 찾기
+    res_qc_col = pick_col(df_result_raw, "AG", ["QC샘플"])
+    res_etc_col = pick_col(df_result_raw, "AH", ["기타샘플"])
 
-        # 수주번호별 양품 합계
-        agg_res = df_res.groupby("수주번호", as_index=False).agg({"생산수량": "sum"})
+    # 최소한 수주번호는 있어야 집계 가능
+    if res_suju_col:
+        use_cols = [res_suju_col]
+        if res_good_col:
+            use_cols.append(res_good_col)
+        if res_qc_col:
+            use_cols.append(res_qc_col)
+        if res_etc_col:
+            use_cols.append(res_etc_col)
+
+        df_res = df_result_raw[use_cols].copy()
+
+        rename_map = {res_suju_col: "수주번호"}
+        if res_good_col:
+            rename_map[res_good_col] = "생산수량"
+        if res_qc_col:
+            rename_map[res_qc_col] = "QC샘플"
+        if res_etc_col:
+            rename_map[res_etc_col] = "기타샘플"
+
+        df_res = df_res.rename(columns=rename_map)
+
+        # NaN → 0 처리 후 수주번호 기준 합계
+        for col in ["생산수량", "QC샘플", "기타샘플"]:
+            if col in df_res.columns:
+                df_res[col] = df_res[col].apply(safe_num)
+
+        agg_res = df_res.groupby("수주번호", as_index=False).agg("sum")
+
         aggregates["result"] = agg_res
     else:
         aggregates["result"] = pd.DataFrame(
-            columns=["수주번호", "생산수량"]
+            columns=["수주번호", "생산수량", "QC샘플", "기타샘플"]
         )
 
     # === 4) 불량 집계: [지시번호, 품번]별 원불/작불 수량 ===
