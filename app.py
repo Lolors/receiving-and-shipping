@@ -576,7 +576,29 @@ if REPORTLAB_AVAILABLE:
         for _, row in df_export.iterrows():
             table_data.append([str(row.get(c, "")) for c in table_cols])
 
-        table = Table(table_data, repeatRows=1)
+        table = Table(table_data, repeatRows=1, hAlign='LEFT')
+
+        table_style = TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
+
+                # 🔥 셀 안 텍스트 왼쪽 정렬
+                ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+        
+                # 🔥 표 양쪽 여백 최소화
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 2),
+                ("TOPPADDING", (0, 0), (-1, -1), 2),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+
+                ("FONTNAME", (0, 0), (-1, -1), KOREAN_FONT_NAME),
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
+
+                ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
+            ]
+        )
+
         table.setStyle(table_style)
         story.append(table)
 
