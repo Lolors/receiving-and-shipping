@@ -1721,12 +1721,13 @@ if menu == "🧩 공통자재":
                             last_date = sub[in_req_date_col].iloc[-1]
                             days_diff = (today - last_date).days
 
+                            # ● (초록색) 아이콘 표시
                             if days_diff <= 7:
-                                mark_1w = "V"
+                                mark_1w = "●"
                                 mark_2w = ""
                             elif days_diff <= 14:
                                 mark_1w = ""
-                                mark_2w = "V"
+                                mark_2w = "●"
                             else:
                                 mark_1w = ""
                                 mark_2w = ""
@@ -1746,15 +1747,24 @@ if menu == "🧩 공통자재":
                     if df_result.empty:
                         st.info("조건에 해당하는 데이터가 없습니다.")
                     else:
-                        # 최신 불출요청일이 위로 오도록 정렬 (선택사항)
                         df_result = df_result.sort_values(
-                            by="불출요청일", ascending=False, na_position="last"
+                            by="불출요청일",
+                            ascending=False,
+                            na_position="last"
                         ).reset_index(drop=True)
 
-                        df_result_styled = df_result.style.set_properties(
-                            subset=["1주 이내", "2주 이내"],
-                            **{"text-align": "center"}
+                        # 스타일 적용: 가운데 정렬 + ● 초록색
+                        def style_center_green(val):
+                            if val == "●":
+                                return "text-align: center; color: green; font-weight: bold;"
+                            return "text-align: center;"
+
+                        df_styled = df_result.style.applymap(
+                            style_center_green, subset=["1주 이내", "2주 이내"]
                         )
+
+                        st.table(df_styled)
+
 
                         st.dataframe(df_result, use_container_width=True)
 
