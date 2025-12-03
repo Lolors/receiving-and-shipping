@@ -647,7 +647,13 @@ if REPORTLAB_AVAILABLE:
         unit_value: 사용자가 입력한 단위수량
         """
         import io
-        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
+        from reportlab.platypus import (
+            SimpleDocTemplate,
+            Paragraph,
+            Spacer,
+            PageBreak,
+            Flowable,
+        )
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
         from reportlab.lib.enums import TA_CENTER, TA_LEFT
         from reportlab.lib.units import mm
@@ -699,24 +705,28 @@ if REPORTLAB_AVAILABLE:
             alignment=TA_CENTER,
         )
 
-        # ✅ 바코드를 가로 중앙정렬하기 위한 래퍼 클래스
-        class CenteredBarcode:
+        # ✅ 바코드를 가로 중앙 정렬하기 위한 Flowable
+        class CenteredBarcode(Flowable):
             def __init__(self, barcode):
+                super().__init__()
                 self.barcode = barcode
-                self.avail_width = None
+                self._avail_width = None
+                self.width = barcode.width
+                self.height = barcode.height
 
             def wrap(self, availWidth, availHeight):
-                # 나중에 drawOn에서 중앙 정렬할 때 사용할 가용 너비 저장
-                self.avail_width = availWidth
-                return self.barcode.width, self.barcode.height
+                # 나중에 draw에서 가운데 맞추기 위해 가용 폭 저장
+                self._avail_width = availWidth
+                # 높이는 바코드 높이 사용
+                return availWidth, self.height
 
-            def drawOn(self, canvas, x, y):
-                # x는 leftMargin 위치, avail_width는 내용 영역 너비
-                if self.avail_width is None:
-                    cx = x
+            def draw(self):
+                # 내용 영역 기준 가운데 위치
+                if self._avail_width is None:
+                    x = 0
                 else:
-                    cx = x + (self.avail_width - self.barcode.width) / 2.0
-                self.barcode.drawOn(canvas, cx, y)
+                    x = (self._avail_width - self.barcode.width) / 2.0
+                self.barcode.drawOn(self.canv, x, 0)
 
         story = []
 
@@ -798,14 +808,6 @@ if REPORTLAB_AVAILABLE:
         pdf_bytes = buffer.getvalue()
         buffer.close()
         return pdf_bytes
-
-
-else:
-    def generate_pdf(*args, **kwargs):
-        raise RuntimeError("reportlab 패키지가 설치돼 있지 않습니다.")
-
-    def generate_label_pdf(*args, **kwargs):
-        raise RuntimeError("reportlab 패키지가 설치돼 있지 않습니다.")
 
 
 # -----------------------------
