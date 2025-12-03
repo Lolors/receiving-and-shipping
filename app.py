@@ -646,7 +646,7 @@ st.title("부자재 입고 / 환입 관리")
 
 menu = st.radio(
     "메뉴 선택",
-    ["📤 파일 업로드", "📦 입고 조회", "🔍 수주 찾기", "↩️ 환입 관리"],
+    ["📤 파일 업로드", "📦 입고 조회", "↩️ 환입 관리", "🔍 수주 찾기", "🧩 공통자재"],
     horizontal=True,
 )
 
@@ -1658,3 +1658,95 @@ if menu == "↩️ 환입 관리":
                         st.markdown(
                             f"- **{row['품번']} / {row['품명']}** : {row['비고2']}"
                         )
+
+# ============================================================
+# 🧩 5. 공통자재 탭
+# ============================================================
+if menu == "🧩 공통자재":
+    st.subheader("🧩 공통자재 확인")
+
+    search_part = st.text_input(
+        "찾을 자재 품번을 입력하세요 (BOM 시트 C열 기준)",
+        key="common_part_search",
+        placeholder="예: 자재 품번 입력"
+    )
+
+    if search_part:
+        # ---- 1) BOM 시트에서 자재 품번(C열) → 품목코드(A), 품명(B) 찾기 ----
+        df_bom = df_bom_raw.copy()
+
+        bom_item_col = pick_col(df_bom, "A", ["품목코드"])
+        bom_name_col = pick_col(df_bom, "B", ["품명"])
+        bom_part_col = pick_col(df_bom, "C", ["품번"])
+
+        if not all([bom_item_col, bom_name_col, bom_part_col]):
+            st.error("BOM 시트에서 품목코드(A), 품명(B), 품번(C) 컬럼을 찾지 못했습니다.")
+        else:
+            df_bom_hit = df_bom[df_bom[bom_part_col] == search_part].copy()
+
+            if df_bom_hit.empty:
+                st.info("해당 자재 품번을 사용하는 품목코드를 BOM에서 찾지 못했습니다.")
+            else:
+                df_bom_hit = df_bom_hit[[bom_part_col, bom_item_col, bom_name_col]].drop_duplicates()
+                df_bom_hit.columns = ["자재품번", "품목코드", "품명"]
+
+                # ---- 2) 입고 시트에서 완성품번(D열) = 품목코드 인 행 중 '가장 마지막 행'의 요청날짜(K열) ----
+                df_in = df_in_raw.copy()
+                in_fin_col = pick_col(df_in, "D", ["완성품번", "품목코드", "품번"])
+                in_req_date_col = pick_col(df_in, "K", ["요청날짜", "요청일"])
+
+                if in_fin_col is None or in_req_date_col is None:
+                    st.error("입고 시트에서 완성품번(D열) 또는 요청날짜(K열) 컬럼을 찾지 못했습니다.")
+                else:
+                    # 날짜형으로 변환
+                    df_in[in_req_date_col] = pd.to_datetime(
+                        df_in[in_req_date_col], errors="coerce"
+                    ).dt.date
+
+                    today = date.today()
+                    result_rows = []
+
+                    for _, r in df_bom_hit.iterrows():
+                        item_code = r["품목코드"]
+                        name = r["품명"]
+                        comp_part = r["자재품번"]
+
+                        sub = df_in[df_in[in_fin_col] == item_code].copy()
+                        sub = sub.dropna(subset=[in_req_date_col])
+
+                        if sub.empty:
+                            last_date = None
+                            days_diff = None
+                            status = "요청이력 없음"
+                        else:
+                            # 가장 마지막 행의 요청날짜 (엑셀 상 맨 아래 행 기준 → 날짜 오름차순 후 마지막)
+                            sub = sub.sort_values(in_req_date_col)
+                            last_date = sub[in_req_date_col].iloc[-1]
+                            days_diff = (today - last_date).days if last_date else None
+
+                            if days_diff is None:
+                                status = "날짜 오류"
+                            elif days_diff <= 7:
+                                status = "1주 이내"
+                            elif days_diff <= 14:
+                                status = "2주 이내"
+                            else:
+                                status = "2주 초과"
+
+                        result_rows.append(
+                            {
+                                "자재품번": comp_part,
+                                "품목코드(완성품)": item_code,
+                                "품명(완성품)": name,
+                                "마지막 요청날짜": last_date,
+                                "경과일수": days_diff,
+                                "구분": status,
+                            }
+                        )
+
+                    df_result = pd.DataFrame(result_rows)
+
+                    if df_result.empty:
+                        st.info("조건에 해당하는 데이터가 없습니다.")
+                    else:
+                        st.dataframe(df_result, use_container_width=True)
