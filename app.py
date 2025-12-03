@@ -1261,7 +1261,7 @@ if menu == "🔍 수주 찾기":
                                         use_container_width=True,
                                     )
 
- # ============================================================
+# ============================================================
 # ↩️ 4. 환입 관리 화면 (+ 환입 예상재고)
 # ============================================================
 if menu == "↩️ 환입 관리":
@@ -1585,124 +1585,123 @@ if menu == "↩️ 환입 관리":
                 key="bom_component_editor",
             )
 
-# ===============================
-# 🔘 환입 데이터 불러오기 / 초기화 버튼 (가운데 정렬)
-# ===============================
+    # ===============================
+    # 🔘 환입 데이터 불러오기 / 초기화 버튼 (가운데 정렬)
+    # ===============================
+    col_left, col_center, col_right = st.columns([1, 2, 1])
 
-# 버튼을 가운데 정렬하기 위해 좌우에 빈 column 추가
-col_left, col_center, col_right = st.columns([1, 2, 1])
+    with col_center:
+        col_btn1, col_btn2 = st.columns([1, 1])
 
-with col_center:
-    # 두 버튼을 가로 한 줄에 배치
-    col_btn1, col_btn2 = st.columns([1, 1])
+        with col_btn1:
+            load_clicked = st.button("✅ 환입 데이터 불러오기", key="btn_return_load")
 
-    with col_btn1:
-        load_clicked = st.button("✅ 환입 데이터 불러오기", key="btn_return_load")
+        with col_btn2:
+            clear_clicked = st.button("🧹 환입 예상재고 초기화", key="btn_clear_expect")
 
-    with col_btn2:
-        clear_clicked = st.button("🧹 환입 예상재고 초기화", key="btn_clear_expect")
-
-
-# ===============================
-# 🔍 환입 데이터 불러오기 실행 로직
-# ===============================
-if load_clicked:
-    if not suju_no:
-        st.error("수주번호를 입력해주세요.")
-    elif not selected_jisi:
-        st.error("지시번호를 선택해주세요.")
-    elif bom_component_df.empty:
-        st.error("BOM 자재 목록이 없습니다.")
-    else:
-        selected_rows = bom_component_df[bom_component_df["선택"] == True].copy()
-        if selected_rows.empty:
-            st.warning("선택된 자재가 없습니다. 최소 1개 선택해주세요.")
+    # ===============================
+    # 🔍 환입 데이터 불러오기 실행 로직
+    # ===============================
+    if load_clicked:
+        if not suju_no:
+            st.error("수주번호를 입력해주세요.")
+        elif not selected_jisi:
+            st.error("지시번호를 선택해주세요.")
+        elif bom_component_df.empty:
+            st.error("BOM 자재 목록이 없습니다.")
         else:
-            new_rows = []
-            for _, row in selected_rows.iterrows():
-                part = row["품번"]
-                name = row["품명"]
-                unit = row["단위수량"]
-
-                new_rows.append(
-                    {
-                        "수주번호": suju_no,
-                        "지시번호": selected_jisi,
-                        "생산공정": process_value,
-                        "생산시작일": production_start_date,
-                        "생산종료일": production_end_date,
-                        "종료조건": finish_reason,
-                        "환입일": return_date,
-                        "환입주차": return_week,
-                        "완성품번": finished_part,
-                        "제품명": finished_name,
-                        "품번": part,
-                        "품명": name,
-                        "단위수량": unit,
-                        "ERP재고": None,
-                        "실재고예상": None,
-                        "환입결정수": None,
-                        "차이": None,
-                        "비고": "",
-                    }
-                )
-
-            df_new = pd.DataFrame(new_rows)
-
-            # 기존 + 신규 합쳐서 중복 제거
-            df_return = pd.concat([df_return, df_new], ignore_index=True)
-            df_return = df_return.drop_duplicates(
-                subset=["수주번호", "지시번호", "품번"], keep="last"
-            ).reset_index(drop=True)
-            st.session_state["환입관리"] = df_return
-
-            # 집계 최초 생성
-            if st.session_state["aggregates"] is None:
-                st.session_state["aggregates"] = build_aggregates(
-                    df_in_raw,
-                    df_job_raw,
-                    df_result_raw,
-                    df_defect_raw,
-                    df_stock_raw,
-                )
-
-            aggs = st.session_state["aggregates"]
-
-            # 예상재고 계산
-            df_full = recalc_return_expectation(df_return, aggs)
-            st.session_state["환입재고예상"] = df_full
-
-            # ERP재고 매칭
-            stock_part_col = pick_col(df_stock_raw, "D", ["품번"])
-            stock_qty_col = (
-                "실재고수량"
-                if "실재고수량" in df_stock_raw.columns
-                else pick_col(df_stock_raw, "N", ["실재고수량"])
-            )
-
-            if stock_part_col and stock_qty_col:
-                stock_map = dict(
-                    zip(
-                        df_stock_raw[stock_part_col].astype(str),
-                        df_stock_raw[stock_qty_col].apply(safe_num),
-                    )
-                )
-                df_full["ERP재고"] = (
-                    df_full["품번"].astype(str).map(stock_map).fillna(0)
-                )
+            selected_rows = bom_component_df[bom_component_df["선택"] == True].copy()
+            if selected_rows.empty:
+                st.warning("선택된 자재가 없습니다. 최소 1개 선택해주세요.")
             else:
-                st.warning("재고 시트에서 품번 또는 실재고수량 컬럼을 찾을 수 없습니다.")
+                new_rows = []
+                for _, row in selected_rows.iterrows():
+                    part = row["품번"]
+                    name = row["품명"]
+                    unit = row["단위수량"]
 
-            st.success(f"선택된 자재 {len(df_new)}개에 대해 환입 예상재고 데이터가 갱신되었습니다.")
+                    new_rows.append(
+                        {
+                            "수주번호": suju_no,
+                            "지시번호": selected_jisi,
+                            "생산공정": process_value,
+                            "생산시작일": production_start_date,
+                            "생산종료일": production_end_date,
+                            "종료조건": finish_reason,
+                            "환입일": return_date,
+                            "환입주차": return_week,
+                            "완성품번": finished_part,
+                            "제품명": finished_name,
+                            "품번": part,
+                            "품명": name,
+                            "단위수량": unit,
+                            "ERP재고": None,
+                            "실재고예상": None,
+                            "환입결정수": None,
+                            "차이": None,
+                            "비고": "",
+                        }
+                    )
 
+                df_new = pd.DataFrame(new_rows)
 
-# ===============================
-# 🧹 환입 예상재고 초기화 실행 로직
-# ===============================
-if clear_clicked:
-    st.session_state["환입재고예상"] = pd.DataFrame(columns=CSV_COLS)
-    df_full = st.session_state["환입재고예상"]
-    st.success("환입 예상재고 데이터가 초기화되었습니다.")
+                # 기존 + 신규 합쳐서 중복 제거
+                df_return = pd.concat([df_return, df_new], ignore_index=True)
+                df_return = df_return.drop_duplicates(
+                    subset=["수주번호", "지시번호", "품번"], keep="last"
+                ).reset_index(drop=True)
+                st.session_state["환입관리"] = df_return
+
+                # 집계 최초 생성
+                if st.session_state["aggregates"] is None:
+                    st.session_state["aggregates"] = build_aggregates(
+                        df_in_raw,
+                        df_job_raw,
+                        df_result_raw,
+                        df_defect_raw,
+                        df_stock_raw,
+                    )
+
+                aggs = st.session_state["aggregates"]
+
+                # 예상재고 계산
+                df_full = recalc_return_expectation(df_return, aggs)
+                st.session_state["환입재고예상"] = df_full
+
+                # ERP재고 매칭
+                stock_part_col = pick_col(df_stock_raw, "D", ["품번"])
+                stock_qty_col = (
+                    "실재고수량"
+                    if "실재고수량" in df_stock_raw.columns
+                    else pick_col(df_stock_raw, "N", ["실재고수량"])
+                )
+
+                if stock_part_col and stock_qty_col:
+                    stock_map = dict(
+                        zip(
+                            df_stock_raw[stock_part_col].astype(str),
+                            df_stock_raw[stock_qty_col].apply(safe_num),
+                        )
+                    )
+                    df_full["ERP재고"] = (
+                        df_full["품번"].astype(str).map(stock_map).fillna(0)
+                    )
+                else:
+                    st.warning(
+                        "재고 시트에서 품번 또는 실재고수량 컬럼을 찾을 수 없습니다."
+                    )
+
+                st.success(
+                    f"선택된 자재 {len(df_new)}개에 대해 환입 예상재고 데이터가 갱신되었습니다."
+                )
+
+    # ===============================
+    # 🧹 환입 예상재고 초기화 실행 로직
+    # ===============================
+    if clear_clicked:
+        st.session_state["환입재고예상"] = pd.DataFrame(columns=CSV_COLS)
+        df_full = st.session_state["환입재고예상"]
+        st.success("환입 예상재고 데이터가 초기화되었습니다.")
 
     # ----- 환입 예상재고 데이터 표시 + CSV + PDF + 라벨 -----
     st.markdown("### 환입 예상재고 데이터")
@@ -1725,6 +1724,7 @@ if clear_clicked:
             num_rows="dynamic",
             key="return_visible_editor",
         )
+
 
         # ---------- 품번별 수주번호 선택 (CSV 통합용) ----------
         merge_choices = {}
