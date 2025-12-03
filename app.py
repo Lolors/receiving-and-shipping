@@ -640,10 +640,11 @@ if REPORTLAB_AVAILABLE:
         return pdf_bytes
 
     # 🔹 소형 라벨프린터(100×120mm)용 부자재반입 라벨 PDF
-    def generate_label_pdf(df_labels: pd.DataFrame, barcode_value: str) -> bytes:
+    def generate_label_pdf(df_labels: pd.DataFrame, barcode_value: str, unit_value: str) -> bytes:
         """
-        df_labels: '품명', '품번', '단위수량', '환입일' 컬럼을 가진 DataFrame
+        df_labels: '품명', '품번', '환입일' 컬럼을 가진 DataFrame
         barcode_value: 사용자가 입력한 부자재반입요청번호 (예: B202511-00120001)
+        unit_value: 사용자가 직접 입력한 단위수량 텍스트
         1행당 라벨 1장 (100mm x 120mm)
         """
         import io
@@ -690,7 +691,6 @@ if REPORTLAB_AVAILABLE:
         for idx, row in df_labels.iterrows():
             품명 = str(row.get("품명", ""))
             품번 = str(row.get("품번", ""))
-            단위수량 = str(row.get("단위수량", ""))
             환입일 = row.get("환입일", "")
 
             try:
@@ -708,24 +708,28 @@ if REPORTLAB_AVAILABLE:
             lines = [
                 f"품명      {escape(품명)}",
                 f"품목코드  {escape(품번)}",
-                f"단위수량  {escape(단위수량)}",
+                f"단위수량  {escape(unit_value)}",     # ← 사용자 입력값 반영
                 f"반입일자  {escape(환입일_str)}",
             ]
             for line in lines:
                 story.append(Paragraph(line, text_style))
                 story.append(Spacer(1, 4))
 
-            story.append(Spacer(1, 10))
+            story.append(Spacer(1, 12))
 
-            # 🔥 바코드 Flowable 직접 추가 (Drawing 사용 X)
-            bc = code128.Code128(barcode_value, barHeight=25 * mm, barWidth=0.4)
+            # 🔥 바코드 — 라벨 폭에 맞게 최대 너비로 늘림
+            # barWidth는 라벨 전체 폭(mm)을 문자수로 나눈 값  
+            target_width_mm = 90  # 좌우 여백 고려 후 최대 약 90mm
+            char_count = max(len(barcode_value), 1)
+            bar_width = (target_width_mm / char_count) * 0.5  # 적절한 비율
+
+            bc = code128.Code128(barcode_value, barHeight=30 * mm, barWidth=bar_width)
             story.append(bc)
 
-            # 바코드 아래 텍스트
-            story.append(Spacer(1, 6))
+            story.append(Spacer(1, 8))
             story.append(Paragraph(barcode_value, text_style))
 
-            # 여러 개일 경우 다음 페이지로
+            # 여러 개일 경우 다음 페이지
             if idx != len(df_labels) - 1:
                 story.append(PageBreak())
 
