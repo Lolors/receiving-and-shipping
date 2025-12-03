@@ -1552,11 +1552,11 @@ if menu == "↩️ 환입 관리":
             # 1차: 수주번호 기준 필터
             df_job_suju = df_job_raw[df_job_raw["수주번호"] == suju_no].copy()
 
-            # 🔹 2차: 작업장 WC401~WC404 조건 추가
+            # 🔹 2차: 작업장 WC501~WC504 조건 추가
             if job_wc_col and job_wc_col in df_job_suju.columns:
                 df_job_suju = df_job_suju[
                     df_job_suju[job_wc_col].astype(str).isin(
-                        ["WC401", "WC402", "WC403", "WC404"]
+                        ["WC501", "WC502", "WC503", "WC504"]
                     )
                 ]
 
