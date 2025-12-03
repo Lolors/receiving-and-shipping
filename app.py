@@ -653,10 +653,13 @@ if REPORTLAB_AVAILABLE:
             Spacer,
             PageBreak,
             Flowable,
+            Table,
+            TableStyle,
         )
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
         from reportlab.lib.enums import TA_CENTER, TA_LEFT
         from reportlab.lib.units import mm
+        from reportlab.lib import colors
         from reportlab.graphics.barcode import code128
         from xml.sax.saxutils import escape
 
@@ -686,9 +689,19 @@ if REPORTLAB_AVAILABLE:
             alignment=TA_CENTER,
         )
 
-        # 굵은 텍스트 스타일 (품명/품목코드/단위수량/반입일자)
-        bold_text_style = ParagraphStyle(
-            "BoldText",
+        # 왼쪽 필드명 스타일 (굵게)
+        field_label_style = ParagraphStyle(
+            "FieldLabel",
+            parent=styles["Normal"],
+            fontName=KOREAN_FONT_NAME,
+            fontSize=13,
+            leading=16,
+            alignment=TA_LEFT,
+        )
+
+        # 오른쪽 값 스타일 (굵게 — 원하면 얇게도 바꿀 수 있음)
+        field_value_style = ParagraphStyle(
+            "FieldValue",
             parent=styles["Normal"],
             fontName=KOREAN_FONT_NAME,
             fontSize=13,
@@ -715,13 +728,10 @@ if REPORTLAB_AVAILABLE:
                 self.height = barcode.height
 
             def wrap(self, availWidth, availHeight):
-                # 나중에 draw에서 가운데 맞추기 위해 가용 폭 저장
                 self._avail_width = availWidth
-                # 높이는 바코드 높이 사용
                 return availWidth, self.height
 
             def draw(self):
-                # 내용 영역 기준 가운데 위치
                 if self._avail_width is None:
                     x = 0
                 else:
@@ -760,21 +770,54 @@ if REPORTLAB_AVAILABLE:
             # ----- 제목 -----
             story.append(Paragraph("부자재반입", title_style))
             # 공백 2줄 정도
-            story.append(Spacer(1, bold_text_style.leading * 2))
+            story.append(Spacer(1, field_label_style.leading * 2))
 
-            # ----- 굵은 텍스트 필드 (사이사이 1줄 공백) -----
-            bold_lines = [
-                f"<b>품명</b>       {escape(품명)}",
-                f"<b>품목코드</b>  {escape(품번)}",
-                f"<b>단위수량</b>   {escape(unit_value)}",
-                f"<b>반입일자</b>   {escape(환입일_str)}",
+            # ----- 필드 4줄을 2열 테이블로 구성 (왼쪽 열 너비 고정) -----
+            # 왼쪽 열 너비를 고정하면 오른쪽 값 시작 위치가 모두 동일해짐
+            first_col_width = 28 * mm  # 필요하면 mm 값 조절해서 맞추면 됨
+            second_col_width = doc.width - first_col_width
+
+            data = [
+                [
+                    Paragraph("<b>품명</b>", field_label_style),
+                    Paragraph(f"<b>{escape(품명)}</b>", field_value_style),
+                ],
+                [
+                    Paragraph("<b>품목코드</b>", field_label_style),
+                    Paragraph(f"<b>{escape(품번)}</b>", field_value_style),
+                ],
+                [
+                    Paragraph("<b>단위수량</b>", field_label_style),
+                    Paragraph(f"<b>{escape(unit_value)}</b>", field_value_style),
+                ],
+                [
+                    Paragraph("<b>반입일자</b>", field_label_style),
+                    Paragraph(f"<b>{escape(환입일_str)}</b>", field_value_style),
+                ],
             ]
 
-            for line in bold_lines:
-                story.append(Paragraph(line, bold_text_style))
-                # 공백 1줄
-                story.append(Spacer(1, bold_text_style.leading))
+            row_height = field_label_style.leading * 2  # 한 줄 + 공백 1줄 느낌
+            row_heights = [row_height] * len(data)
 
+            tbl = Table(
+                data,
+                colWidths=[first_col_width, second_col_width],
+                rowHeights=row_heights,
+            )
+            tbl.setStyle(
+                TableStyle(
+                    [
+                        ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+                        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                        ("TOPPADDING", (0, 0), (-1, -1), 0),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+                    ]
+                )
+            )
+
+            story.append(tbl)
             story.append(Spacer(1, 8))
 
             # 🔥 바코드 생성 (전체 너비 약 90px 기준)
