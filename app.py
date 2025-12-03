@@ -755,194 +755,268 @@ if menu == "📦 입고 조회":
 # 🔍 3. 수주 찾기 화면
 # ============================================================
 if menu == "🔍 수주 찾기":
-        st.subheader("🔍 수주 찾기")
+    st.subheader("🔍 수주 찾기")
 
-        st.markdown(
-            """
-            **동작 방식**
+    st.markdown(
+        """
+        **동작 방식**
 
-            1. 기준 품번을 입력한다.  
-            2. BOM 시트의 **C열 품번**에서 기준 품번과 일치하는 행을 찾고, 그 행의 **품목코드(A열)** 값을 구한다.  
-            3. 이 품목코드를 **수주 시트의 품번(J열)**에서 검색한다.  
-            4. 없으면 2단계 상위 품목코드로 다시 검색한다.  
-            5. 오늘(today) 기준으로 **1개월 이내 → 1년 이내 → 과거 3개월 → 6개월 → 12개월** 순으로 유효한 수주를 찾는다.  
-            """
-        )
+        1. 기준 품번을 입력한다.  
+        2. BOM 시트의 **C열 품번**에서 기준 품번과 일치하는 행을 찾고, 그 행의 **품목코드(A열)** 값을 구한다.  
+        3. 이 품목코드를 **수주 시트의 품번(J열)**에서 검색한다.  
+        4. 없으면 2단계 상위 품목코드로 다시 검색한다.  
+        5. 오늘(today) 기준으로 **1개월 이내 → 1년 이내 → 과거 3개월 → 6개월 → 12개월** 순으로 유효한 수주를 찾는다.  
+        """
+    )
 
-        base_part = st.text_input("기준 품번 입력", key="suju_find_part")
+    base_part = st.text_input("기준 품번 입력", key="suju_find_part")
 
-        if base_part:
-                today = date.today()
+    if base_part:
+        today = date.today()
 
-                df_bom = df_bom_raw.copy()
-                bom_cols = list(df_bom.columns)
+        df_bom = df_bom_raw.copy()
+        bom_cols = list(df_bom.columns)
 
-                # A열 = 품목코드, B열 = 품명
-                bom_item_col = pick_col(df_bom, "A", ["품목코드"])
-                bom_name_col = pick_col(df_bom, "B", ["품명"])
-                bom_component_col = pick_col(df_bom, "C", ["품번"])
+        # A열 = 품목코드, B열 = 품명, C열 = 품번
+        bom_item_col = pick_col(df_bom, "A", ["품목코드"])
+        bom_name_col = pick_col(df_bom, "B", ["품명"])
+        bom_component_col = pick_col(df_bom, "C", ["품번"])
 
-                if not all([bom_item_col, bom_name_col, bom_component_col]):
-                        st.error("BOM 시트에서 품목코드(A), 품명(B), 품번(C)을 찾지 못했습니다.")
+        if not all([bom_item_col, bom_name_col, bom_component_col]):
+            st.error("BOM 시트에서 품목코드(A), 품명(B), 품번(C)을 찾지 못했습니다.")
+        else:
+            # 기준 품번을 사용하는 BOM 행 검색
+            df_bom_hit = df_bom[df_bom[bom_component_col] == base_part]
+
+            if df_bom_hit.empty:
+                st.info("BOM에서 해당 품번을 사용하는 완성품을 찾지 못했습니다.")
+            else:
+                # 1차 품목코드 목록
+                item_codes = df_bom_hit[bom_item_col].dropna().unique().tolist()
+                st.write("1차 완성품(품목코드):", item_codes)
+
+                df_suju = df_suju_raw.copy()
+
+                suju_part_col = pick_col(df_suju, "J", ["품번"])
+                suju_due_col = pick_col(df_suju, "G", ["조정납기일자"])
+
+                if suju_part_col is None or suju_due_col is None:
+                    st.error("수주 시트에서 품번(J열) 또는 조정납기일자(G열)를 찾지 못했습니다.")
                 else:
-                        # 기준 품번을 사용하는 BOM 행 검색
-                        df_bom_hit = df_bom[df_bom[bom_component_col] == base_part]
+                    df_suju[suju_due_col] = pd.to_datetime(
+                        df_suju[suju_due_col], errors="coerce"
+                    ).dt.date
 
-                        if df_bom_hit.empty:
-                                st.info("BOM에서 해당 품번을 사용하는 완성품을 찾지 못했습니다.")
+                    # 1차 품목코드로 검색
+                    df_suju_hit = df_suju[
+                        df_suju[suju_part_col].isin(item_codes)
+                    ].copy()
+
+                    # 없으면 상위(2차) 품목코드로 재검색
+                    if df_suju_hit.empty:
+                        fallback_item_codes = set()
+                        for code in item_codes:
+                            df_bom_lvl2 = df_bom[df_bom[bom_component_col] == code]
+                            if not df_bom_lvl2.empty:
+                                lvl2 = (
+                                    df_bom_lvl2[bom_item_col]
+                                    .dropna()
+                                    .unique()
+                                    .tolist()
+                                )
+                                fallback_item_codes.update(lvl2)
+
+                        fallback_item_codes = list(fallback_item_codes)
+                        st.info("1차 품목코드로는 없어, 2차 상위 품목코드로 재검색합니다.")
+                        st.write("2차 품목코드:", fallback_item_codes)
+
+                        df_suju_hit = df_suju[
+                            df_suju[suju_part_col].isin(fallback_item_codes)
+                        ].copy()
+
+                    if df_suju_hit.empty:
+                        st.warning("해당 품목코드로 수주 시트에서 검색된 수주가 없습니다.")
+                    else:
+                        # === 검색 범위 설정 ===
+                        one_month_after = today + timedelta(days=30)
+                        one_year_after = today + timedelta(days=365)
+
+                        # 1) 오늘 → 1개월 이내
+                        df_1m = df_suju_hit[
+                            df_suju_hit[suju_due_col].between(today, one_month_after)
+                        ].copy()
+
+                        if not df_1m.empty:
+                            st.success("오늘 기준 1개월 이내 수주 발견!")
+                            df_show = df_1m
                         else:
-                                # 1차 품목코드 목록
-                                item_codes = df_bom_hit[bom_item_col].dropna().unique().tolist()
-                                st.write("1차 완성품(품목코드):", item_codes)
+                            # 2) 오늘 → 1년 이내
+                            df_1y = df_suju_hit[
+                                df_suju_hit[suju_due_col].between(
+                                    today, one_year_after
+                                )
+                            ].copy()
 
-                                df_suju = df_suju_raw.copy()
-                                suju_cols = list(df_suju.columns)
+                            if not df_1y.empty:
+                                st.info("1개월 이내는 없고, 1년 이내 수주가 있습니다.")
+                                df_1y.sort_values(
+                                    by=suju_due_col, ascending=False, inplace=True
+                                )
+                                df_show = df_1y
+                            else:
+                                # 3) 과거 탐색: 3개월·6개월·12개월
+                                back_3m = today - timedelta(days=90)
+                                back_6m = today - timedelta(days=180)
+                                back_12m = today - timedelta(days=365)
 
-                                suju_part_col = pick_col(df_suju, "J", ["품번"])
-                                suju_due_col = pick_col(df_suju, "G", ["조정납기일자"])
+                                df_back3 = df_suju_hit[
+                                    df_suju_hit[suju_due_col].between(
+                                        back_3m, today
+                                    )
+                                ].copy()
 
-                                df_suju[suju_due_col] = pd.to_datetime(
-                                        df_suju[suju_due_col], errors="coerce"
-                                ).dt.date
-
-                                # 1차 품목코드로 검색
-                                df_suju_hit = df_suju[df_suju[suju_part_col].isin(item_codes)].copy()
-
-                                # 없으면 상위(2차) 품목코드로 재검색
-                                if df_suju_hit.empty:
-                                        fallback_item_codes = set()
-                                        for code in item_codes:
-                                                df_bom_lvl2 = df_bom[df_bom[bom_component_col] == code]
-                                                if not df_bom_lvl2.empty:
-                                                        lvl2 = df_bom_lvl2[bom_item_col].dropna().unique().tolist()
-                                                        fallback_item_codes.update(lvl2)
-
-                                        fallback_item_codes = list(fallback_item_codes)
-                                        st.info("1차 품목코드로는 없어, 2차 상위 품목코드로 재검색합니다.")
-                                        st.write("2차 품목코드:", fallback_item_codes)
-
-                                        df_suju_hit = df_suju[df_suju[suju_part_col].isin(fallback_item_codes)].copy()
-
-                                if df_suju_hit.empty:
-                                        st.warning("해당 품목코드로 수주 시트에서 검색된 수주가 없습니다.")
+                                if not df_back3.empty:
+                                    st.info(
+                                        "1년 이내 수주는 없어서, 과거 3개월 수주를 보여줍니다."
+                                    )
+                                    df_back3.sort_values(
+                                        by=suju_due_col,
+                                        ascending=False,
+                                        inplace=True,
+                                    )
+                                    df_show = df_back3
                                 else:
-                                        # === 검색 범위 설정 ===
-                                        one_month_after = today + timedelta(days=30)
-                                        one_year_after  = today + timedelta(days=365)
+                                    df_back6 = df_suju_hit[
+                                        df_suju_hit[suju_due_col].between(
+                                            back_6m, today
+                                        )
+                                    ].copy()
 
-                                        # 1) 오늘 → 1개월 이내
-                                        df_1m = df_suju_hit[
-                                                df_suju_hit[suju_due_col].between(today, one_month_after)
+                                    if not df_back6.empty:
+                                        st.info(
+                                            "3개월 이내 없음 → 과거 6개월 수주 표시."
+                                        )
+                                        df_back6.sort_values(
+                                            by=suju_due_col,
+                                            ascending=False,
+                                            inplace=True,
+                                        )
+                                        df_show = df_back6
+                                    else:
+                                        df_back12 = df_suju_hit[
+                                            df_suju_hit[suju_due_col].between(
+                                                back_12m, today
+                                            )
                                         ].copy()
 
-                                        if not df_1m.empty:
-                                                st.success("오늘 기준 1개월 이내 수주 발견!")
-                                                df_show = df_1m
-
-                                        else:
-                                                # 2) 오늘 → 1년 이내
-                                                df_1y = df_suju_hit[
-                                                        df_suju_hit[suju_due_col].between(today, one_year_after)
-                                                ].copy()
-
-                                                if not df_1y.empty:
-                                                        st.info("1개월 이내는 없고, 1년 이내 수주가 있습니다.")
-                                                        df_1y.sort_values(by=suju_due_col, ascending=False, inplace=True)
-                                                        df_show = df_1y
-
-                                                else:
-                                                        # 3) 과거 탐색: 3개월·6개월·12개월
-                                                        back_3m  = today - timedelta(days=90)
-                                                        back_6m  = today - timedelta(days=180)
-                                                        back_12m = today - timedelta(days=365)
-
-                                                        df_back3 = df_suju_hit[
-                                                                df_suju_hit[suju_due_col].between(back_3m, today)
-                                                        ].copy()
-
-                                                        if not df_back3.empty:
-                                                                st.info("1년 이내 수주는 없어서, 과거 3개월 수주를 보여줍니다.")
-                                                                df_back3.sort_values(by=suju_due_col, ascending=False, inplace=True)
-                                                                df_show = df_back3
-
-                                                        else:
-                                                                df_back6 = df_suju_hit[
-                                                                        df_suju_hit[suju_due_col].between(back_6m, today)
-                                                                ].copy()
-
-                                                                if not df_back6.empty:
-                                                                        st.info("3개월 이내 없음 → 과거 6개월 수주 표시.")
-                                                                        df_back6.sort_values(by=suju_due_col, ascending=False, inplace=True)
-                                                                        df_show = df_back6
-
-                                                                else:
-                                                                        df_back12 = df_suju_hit[
-                                                                                df_suju_hit[suju_due_col].between(back_12m, today)
-                                                                        ].copy()
-
-                                                                        if not df_back12.empty:
-                                                                                st.info("6개월 이내 없음 → 과거 12개월 수주 표시.")
-                                                                                df_back12.sort_values(by=suju_due_col, ascending=False, inplace=True)
-                                                                                df_show = df_back12
-                                                                        else:
-                                                                                st.warning("과거 12개월까지도 해당 품목코드의 수주가 없습니다.")
-                                                                                df_show = pd.DataFrame()
-
-                                        # ===== 결과 표시 =====
-                                        if not df_show.empty:
-                                                display_cols = []
-                                                for c in [suju_part_col, "품명", "수주번호", suju_due_col, "수량", "매출처"]:
-                                                        if c in df_show.columns:
-                                                                display_cols.append(c)
-
-                                                st.dataframe(df_show[display_cols], use_container_width=True)
-                                            
-                                        # =======================================================
-                                        # 🔁 수주번호 → 작업지시 시트에서 지시번호 / 품명 가져오기
-                                        # =======================================================
-                                        if "수주번호" in df_show.columns:
-                                            # 1) 수주 찾기 결과에서 수주번호 목록 추출
-                                            suju_values = (
-                                                df_show["수주번호"]
-                                                .dropna()
-                                                .astype(str)
-                                                .unique()
-                                                .tolist()
+                                        if not df_back12.empty:
+                                            st.info(
+                                                "6개월 이내 없음 → 과거 12개월 수주 표시."
                                             )
+                                            df_back12.sort_values(
+                                                by=suju_due_col,
+                                                ascending=False,
+                                                inplace=True,
+                                            )
+                                            df_show = df_back12
+                                        else:
+                                            st.warning(
+                                                "과거 12개월까지도 해당 품목코드의 수주가 없습니다."
+                                            )
+                                            df_show = pd.DataFrame()
 
-                                            # 2) 작업지시 시트에서 컬럼 찾기
-                                            job_suju_col = pick_col(df_job_raw, "A", ["수주번호"])
-                                            job_jisi_col = pick_col(df_job_raw, "B", ["지시번호"])
-                                            job_name_col = pick_col(df_job_raw, "L", ["품명", "완성품명"])
+                        # ===== 결과 표시 =====
+                        if not df_show.empty:
+                            display_cols = []
+                            for c in [
+                                suju_part_col,
+                                "품명",
+                                "수주번호",
+                                suju_due_col,
+                                "수량",
+                                "매출처",
+                            ]:
+                                if c in df_show.columns:
+                                    display_cols.append(c)
 
-                                            if not all([job_suju_col, job_jisi_col, job_name_col]):
-                                                st.info("작업지시 시트에서 수주번호(A), 지시번호(B), 품명(L)을 모두 찾지 못했습니다.")
-                                            else:
-                                                # 3) 필요한 컬럼만 가져오기
-                                                df_job_map = df_job_raw[
-                                                    [job_suju_col, job_jisi_col, job_name_col]
-                                                ].copy()
-                                                df_job_map.columns = ["수주번호", "지시번호", "품명"]
+                            st.dataframe(
+                                df_show[display_cols],
+                                use_container_width=True,
+                            )
 
-                                                # 문자열 매칭을 위해 변환
-                                                df_job_map["수주번호_str"] = df_job_map["수주번호"].astype(str)
+                        # =======================================================
+                        # 🔁 수주번호 → 작업지시 시트에서 지시번호 / 품명 가져오기
+                        # =======================================================
+                        if "수주번호" in df_show.columns:
+                            # 1) 수주 찾기 결과에서 수주번호 목록 추출
+                            suju_values = (
+                                df_show["수주번호"]
+                                .dropna()
+                                .astype(str)
+                                .unique()
+                                .tolist()
+                            )
 
-                                                # 4) 수주찾기에서 나온 수주번호 목록과 일치하는 행 필터링
-                                                df_job_filtered = df_job_map[
-                                                    df_job_map["수주번호_str"].isin(suju_values)
-                                                ].drop(columns=["수주번호_str"])
+                            # 2) 작업지시 시트에서 컬럼 찾기
+                            job_suju_col = pick_col(
+                                df_job_raw, "A", ["수주번호"]
+                            )
+                            job_jisi_col = pick_col(
+                                df_job_raw, "B", ["지시번호"]
+                            )
+                            job_name_col = pick_col(
+                                df_job_raw, "L", ["품명", "완성품명"]
+                            )
 
-                                                if df_job_filtered.empty:
-                                                    st.info("작업지시 시트에서 해당 수주번호의 지시번호/품명을 찾지 못했습니다.")
-                                                else:
-                                                    # 중복 제거
-                                                    df_job_filtered = df_job_filtered.drop_duplicates(
-                                                        subset=["수주번호", "지시번호", "품명"]
-                                                    )
+                            if not all(
+                                [job_suju_col, job_jisi_col, job_name_col]
+                            ):
+                                st.info(
+                                    "작업지시 시트에서 수주번호(A), 지시번호(B), 품명(L)을 모두 찾지 못했습니다."
+                                )
+                            else:
+                                # 3) 필요한 컬럼만 가져오기
+                                df_job_map = df_job_raw[
+                                    [job_suju_col, job_jisi_col, job_name_col]
+                                ].copy()
+                                df_job_map.columns = [
+                                    "수주번호",
+                                    "지시번호",
+                                    "품명",
+                                ]
 
-                                                    st.markdown("#### 수주번호별 지시번호 / 품명 (작업지시 기준)")
-                                                    st.dataframe(
-                                                        df_job_filtered[["수주번호", "지시번호", "품명"]],
+                                # 문자열 매칭을 위해 변환
+                                df_job_map["수주번호_str"] = (
+                                    df_job_map["수주번호"].astype(str)
+                                )
+
+                                # 4) 수주찾기에서 나온 수주번호 목록과 일치하는 행 필터링
+                                df_job_filtered = df_job_map[
+                                    df_job_map["수주번호_str"].isin(
+                                        suju_values
+                                    )
+                                ].drop(columns=["수주번호_str"])
+
+                                if df_job_filtered.empty:
+                                    st.info(
+                                        "작업지시 시트에서 해당 수주번호의 지시번호/품명을 찾지 못했습니다."
+                                    )
+                                else:
+                                    # 중복 제거
+                                    df_job_filtered = df_job_filtered.drop_duplicates(
+                                        subset=["수주번호", "지시번호", "품명"]
+                                    )
+
+                                    st.markdown(
+                                        "#### 수주번호별 지시번호 / 품명 (작업지시 기준)"
+                                    )
+                                    st.dataframe(
+                                        df_job_filtered[
+                                            ["수주번호", "지시번호", "품명"]
+                                        ],
+                                        use_container_width=True,
+                                    )
+
  # ============================================================
 # ↩️ 4. 환입 관리 화면 (+ 환입 예상재고)
 # ============================================================
