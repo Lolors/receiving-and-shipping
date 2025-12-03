@@ -778,7 +778,7 @@ if REPORTLAB_AVAILABLE:
             story.append(Spacer(1, 8))
 
             # 🔥 바코드 생성 (전체 너비 약 90px 기준)
-            bar_width_px = 50
+            bar_width_px = 30
             bar_width_pt = bar_width_px * 0.75  # px → pt
             char_count = max(len(barcode_value), 1)
             bar_width = bar_width_pt / char_count
