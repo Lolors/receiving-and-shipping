@@ -1653,7 +1653,7 @@ if menu == "↩️ 환입 관리":
                                     st.warning("선택한 자재에서 라벨에 사용할 데이터를 찾지 못했습니다.")
                                 else:
                                     try:
-                                        pdf_labels = generate_label_pdf(df_labels, barcode_value)
+                                        pdf_labels = generate_label_pdf(df_labels, barcode_value, unit_value)
                                         st.download_button(
                                             "📄 부자재반입 라벨 PDF 다운로드",
                                             data=pdf_labels,
