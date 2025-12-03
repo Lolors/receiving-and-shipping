@@ -1847,7 +1847,7 @@ if menu == "↩️ 환입 관리":
 
         csv_export_df = grouped[CSV_COLS].copy()
 
-        # CSV 받기 버튼
+        # ---------- CSV 받기 버튼까지 그대로 둔 뒤에, 아래부터 레이아웃 교체 ----------
         csv_data = csv_export_df.to_csv(index=False).encode("utf-8-sig")
         st.download_button(
             "📥 CSV 받기",
@@ -1856,131 +1856,151 @@ if menu == "↩️ 환입 관리":
             mime="text/csv",
         )
 
-        # PDF 받기 버튼 (최종 CSV용 데이터 기준)
-        if REPORTLAB_AVAILABLE and not csv_export_df.empty:
-            st.markdown("### 📎 PDF 상단에 들어갈 메모를 입력하거나 붙여넣기(Ctrl+V) 하세요")
+        # 🔹 PDF / 비고코멘트 / 바코드 라벨을 좌·우 2열 레이아웃으로 배치
+        col_left, col_right = st.columns(2)
 
-            pasted_text = st.text_area(
-                "PDF 메모",
-                height=100,
-                key="pdf_note_text",
-                placeholder="여기에 메모나 특이사항을 입력/붙여넣기 하세요.",
-            )
+        # =========================
+        # ⬅️ 왼쪽 컬럼: PDF + 입고 비고 코멘트
+        # =========================
+        with col_left:
+            if REPORTLAB_AVAILABLE and not csv_export_df.empty:
+                st.markdown("### 📑 PDF 상단 메모")
 
-            pdf_bytes = generate_pdf(csv_export_df, pasted_text=pasted_text)
-
-            st.download_button(
-                "📄 PDF 받기",
-                data=pdf_bytes,
-                file_name="환입_예상재고.pdf",
-                mime="application/pdf",
-            )
-        elif not REPORTLAB_AVAILABLE:
-            st.info("PDF 저장 기능을 쓰려면 `pip install reportlab` 설치가 필요합니다.")
-
-        # ---------- 입고 시트 비고(구 비고2) 코멘트 ----------
-        in_suju_col = pick_col(df_in_raw, "B", ["수주번호"])
-        in_jisi_col = pick_col(df_in_raw, "C", ["지시번호"])
-        in_part_col = pick_col(df_in_raw, "M", ["품번"])
-        in_cmt_col = pick_col(df_in_raw, "V", ["비고", "비고2"])
-
-        if in_suju_col and in_jisi_col and in_part_col and in_cmt_col:
-            df_in_comment = df_in_raw[
-                [in_suju_col, in_jisi_col, in_part_col, in_cmt_col]
-            ].copy()
-            df_in_comment.columns = ["수주번호", "지시번호", "품번", "비고2"]
-            df_in_comment = df_in_comment.dropna(subset=["비고2"])
-
-            if not df_in_comment.empty:
-                df_comment_merge = df_full.merge(
-                    df_in_comment,
-                    how="left",
-                    on=["수주번호", "지시번호", "품번"],
+                pasted_text = st.text_area(
+                    "PDF 메모",
+                    height=100,
+                    key="pdf_note_text",
+                    placeholder="여기에 메모나 특이사항을 입력/붙여넣기 하세요."
                 )
 
-                df_comment_show = df_comment_merge.dropna(subset=["비고2"])[
-                    ["품번", "품명", "비고2"]
-                ].drop_duplicates()
+                pdf_bytes = generate_pdf(csv_export_df, pasted_text=pasted_text)
 
-                if not df_comment_show.empty:
-                    st.markdown("#### 입고 비고 코멘트")
-                    for _, row in df_comment_show.iterrows():
-                        st.markdown(
-                            f"- **{row['품번']} / {row['품명']}** : {row['비고2']}"
-                        )
+                st.download_button(
+                    "📄 PDF 받기",
+                    data=pdf_bytes,
+                    file_name="환입_예상재고.pdf",
+                    mime="application/pdf",
+                )
+            elif not REPORTLAB_AVAILABLE:
+                st.info("PDF 저장 기능을 쓰려면 `pip install reportlab` 설치가 필요합니다.")
 
-        # 🔹 사용자에게 부자재반입요청번호 & 단위수량 한 줄 입력
-        st.markdown("#### 🏷 바코드(부자재반입요청번호) 입력")
+            # ----- 입고 시트 비고 코멘트 -----
+            st.markdown("### 📝 입고 비고 코멘트")
 
-        col_bc, col_unit = st.columns([3, 1])   # 👉 비율은 3 : 1 로 넓이 설정
+            in_suju_col = pick_col(df_in_raw, "B", ["수주번호"])
+            in_jisi_col = pick_col(df_in_raw, "C", ["지시번호"])
+            in_part_col = pick_col(df_in_raw, "M", ["품번"])
+            in_cmt_col = pick_col(df_in_raw, "V", ["비고", "비고2"])
 
-        with col_bc:
-            barcode_value = st.text_input(
-                "부자재반입요청번호 (예: B202511-00120001)",
-                key="barcode_input",
-            )
+            if in_suju_col and in_jisi_col and in_part_col and in_cmt_col:
+                df_in_comment = df_in_raw[
+                    [in_suju_col, in_jisi_col, in_part_col, in_cmt_col]
+                ].copy()
+                df_in_comment.columns = ["수주번호", "지시번호", "품번", "비고2"]
+                df_in_comment = df_in_comment.dropna(subset=["비고2"])
 
-        with col_unit:
-            unit_value = st.text_input(
-                "단위수량",
-                key="unit_input",
-            )
+                if not df_in_comment.empty:
+                    df_comment_merge = df_full.merge(
+                        df_in_comment,
+                        how="left",
+                        on=["수주번호", "지시번호", "품번"],
+                    )
 
-        # 🔸 라벨 PDF 바로 다운로드 (st.button → st.download_button)
-        pdf_labels = None
-        download_disabled = True
-        download_help = ""
+                    df_comment_show = df_comment_merge.dropna(subset=["비고2"])[
+                        ["품번", "품명", "비고2"]
+                    ].drop_duplicates()
 
-        # 라벨선택 컬럼/품번 컬럼 체크
-        if "라벨선택" not in df_visible_edit.columns:
-            st.error("라벨선택 컬럼을 찾을 수 없습니다.")
-        elif "품번" not in df_visible_edit.columns:
-            st.error("품번 컬럼이 없어 라벨 데이터를 만들 수 없습니다.")
-        else:
-            selected_mask = df_visible_edit["라벨선택"] == True
-            selected_parts = (
-                df_visible_edit.loc[selected_mask, "품번"]
-                .astype(str)
-                .tolist()
-            )
-
-            required_cols = ["품명", "품번", "환입일"]
-            if not all(col in df_full.columns for col in required_cols):
-                st.error("라벨 생성에 필요한 컬럼(품명, 품번, 환입일)이 부족합니다.")
-            else:
-                if not barcode_value:
-                    download_help = "부자재반입요청번호를 입력하면 버튼이 활성화됩니다."
-                elif not unit_value:
-                    download_help = "단위수량을 입력하면 버튼이 활성화됩니다."
-                elif not selected_parts:
-                    download_help = "라벨을 출력할 자재를 한 개 이상 선택하세요."
-                else:
-                    df_labels = df_full[
-                        df_full["품번"].astype(str).isin(selected_parts)
-                    ][required_cols].copy()
-
-                    if df_labels.empty:
-                        download_help = "선택한 자재에서 라벨에 사용할 데이터를 찾지 못했습니다."
+                    if not df_comment_show.empty:
+                        for _, row in df_comment_show.iterrows():
+                            st.markdown(
+                                f"- **{row['품번']} / {row['품명']}** : {row['비고2']}"
+                            )
                     else:
-                        try:
-                            pdf_labels = generate_label_pdf(df_labels, barcode_value, unit_value)
-                            download_disabled = False
-                        except Exception as e:
-                            st.error(f"라벨 PDF 생성 중 오류: {e}")
-                            download_help = "라벨 PDF 생성 중 오류가 발생했습니다."
+                        st.caption("표시할 비고 코멘트가 없습니다.")
+                else:
+                    st.caption("입고 시트에 비고 내용이 없습니다.")
+            else:
+                st.caption("입고 시트에서 비고 컬럼을 찾지 못했습니다.")
 
-        if download_help:
-            st.caption(download_help)
+        # =========================
+        # ➡️ 오른쪽 컬럼: 바코드 입력 + 라벨 PDF
+        # =========================
+        with col_right:
+            st.markdown("### 🏷 부자재반입라벨 출력")
 
-        st.download_button(
-            "🏷 선택한 자재 바코드 라벨 PDF 만들기",
-            data=pdf_labels if pdf_labels is not None else b"",
-            file_name="부자재반입라벨.pdf",
-            mime="application/pdf",
-            disabled=download_disabled,
-            key="btn_make_labels",
-        )
+            # 한 줄에 나란히 입력
+            col_bc, col_unit = st.columns([3, 1])
 
+            with col_bc:
+                barcode_value = st.text_input(
+                    "부자재반입요청번호",
+                    placeholder="예: B202511-00120001",
+                    key="barcode_input",
+                )
+
+            with col_unit:
+                unit_value = st.text_input(
+                    "단위수량",
+                    key="unit_input",
+                )
+
+            pdf_labels = None
+            download_disabled = True
+            download_help = ""
+
+            # 라벨선택 / 품번 컬럼 체크
+            if "라벨선택" not in df_visible_edit.columns:
+                st.error("라벨선택 컬럼을 찾을 수 없습니다.")
+            elif "품번" not in df_visible_edit.columns:
+                st.error("품번 컬럼이 없어 라벨 데이터를 만들 수 없습니다.")
+            else:
+                selected_mask = df_visible_edit["라벨선택"] == True
+                selected_parts = (
+                    df_visible_edit.loc[selected_mask, "품번"]
+                    .astype(str)
+                    .tolist()
+                )
+
+                required_cols = ["품명", "품번", "환입일"]
+                if not all(col in df_full.columns for col in required_cols):
+                    st.error("라벨 생성에 필요한 컬럼(품명, 품번, 환입일)이 부족합니다.")
+                else:
+                    if not barcode_value:
+                        download_help = "부자재반입요청번호를 입력하면 버튼이 활성화됩니다."
+                    elif not unit_value:
+                        download_help = "단위수량을 입력하면 버튼이 활성화됩니다."
+                    elif not selected_parts:
+                        download_help = "라벨을 출력할 자재를 한 개 이상 선택하세요."
+                    else:
+                        df_labels = df_full[
+                            df_full["품번"].astype(str).isin(selected_parts)
+                        ][required_cols].copy()
+
+                        if df_labels.empty:
+                            download_help = "선택한 자재에서 라벨에 사용할 데이터를 찾지 못했습니다."
+                        else:
+                            try:
+                                pdf_labels = generate_label_pdf(
+                                    df_labels,
+                                    barcode_value,
+                                    unit_value,
+                                )
+                                download_disabled = False
+                            except Exception as e:
+                                st.error(f"라벨 PDF 생성 중 오류: {e}")
+                                download_help = "라벨 PDF 생성 중 오류가 발생했습니다."
+
+            if download_help:
+                st.caption(download_help)
+
+            st.download_button(
+                "🏷 선택한 자재 바코드 라벨 PDF 만들기",
+                data=pdf_labels if pdf_labels is not None else b"",
+                file_name="부자재반입라벨.pdf",
+                mime="application/pdf",
+                disabled=download_disabled,
+                key="btn_make_labels",
+            )
 
 # ============================================================
 # 🧩 5. 공통자재 탭
