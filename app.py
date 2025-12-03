@@ -1717,13 +1717,6 @@ if menu == "↩️ 환입 관리":
             key="return_visible_editor",
         )
 
-        # 🔹 사용자에게 부자재반입요청번호 입력 받기
-        st.markdown("#### 🏷 바코드(부자재반입요청번호) 입력")
-        barcode_value = st.text_input(
-            "부자재반입요청번호를 입력하세요 (예: B202511-00120001)",
-            key="barcode_input",
-        )
-
         # ---------- 품번별 수주번호 선택 (CSV 통합용) ----------
         merge_choices = {}
         work = df_full.copy()
@@ -1915,6 +1908,13 @@ if menu == "↩️ 환입 관리":
                         st.markdown(
                             f"- **{row['품번']} / {row['품명']}** : {row['비고2']}"
                         )
+
+        # 🔹 사용자에게 부자재반입요청번호 입력 받기
+        st.markdown("#### 🏷 바코드(부자재반입요청번호) 입력")
+        barcode_value = st.text_input(
+            "부자재반입요청번호를 입력하세요 (예: B202511-00120001)",
+            key="barcode_input",
+        )
 
         # 🔸 라벨용 단위수량 입력
         unit_value = st.text_input(
