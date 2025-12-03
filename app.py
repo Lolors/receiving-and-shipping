@@ -484,18 +484,159 @@ def recalc_return_expectation(df_return, aggs):
 # -----------------------------
 if REPORTLAB_AVAILABLE:
     from xml.sax.saxutils import escape
-    from reportlab.platypus import PageBreak
     from reportlab.graphics.barcode import code128
     from reportlab.graphics.shapes import Drawing
     from reportlab.lib.units import mm
+    from reportlab.platypus import PageBreak
 
     def generate_pdf(
         df_export: pd.DataFrame,
         uploaded_image=None,
         pasted_text: str | None = None,
     ) -> bytes:
-        # 👉 여기에는 네가 이미 쓰고 있는 기존 generate_pdf 코드 그대로 둬도 됨
-        ...
+        """
+        - 제목 / 표 모두 왼쪽 정렬
+        - pasted_text가 있으면 제목 아래에 그대로 출력
+        - uploaded_image는 지금은 안 써도 됨(차후 확장용)
+        """
+        import io
+        from reportlab.platypus import (
+            SimpleDocTemplate,
+            Table,
+            TableStyle,
+            Paragraph,
+            Spacer,
+            Image,
+        )
+        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib import colors
+
+        buffer = io.BytesIO()
+
+        doc = SimpleDocTemplate(
+            buffer,
+            pagesize=landscape(A4),
+            leftMargin=20,
+            rightMargin=20,
+            topMargin=20,
+            bottomMargin=20,
+        )
+
+        styles = getSampleStyleSheet()
+
+        title_style = ParagraphStyle(
+            "TitleStyle",
+            parent=styles["Heading1"],
+            fontName=KOREAN_FONT_NAME,
+            fontSize=15,
+            alignment=0,   # LEFT
+        )
+
+        text_style = ParagraphStyle(
+            "TextStyle",
+            parent=styles["Normal"],
+            fontName=KOREAN_FONT_NAME,
+            fontSize=10,
+            leading=14,
+            alignment=0,   # LEFT
+        )
+
+        table_style = TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
+                ("ALIGN", (0, 0), (-1, -1), "LEFT"),  # 표 전체 왼쪽 정렬
+                ("FONTNAME", (0, 0), (-1, -1), KOREAN_FONT_NAME),
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
+
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 20),
+                ("TOPPADDING",    (0, 0), (-1, -1), 20),
+                ("MINROWHEIGHT",  (0, 0), (-1, -1), 35),
+            ]
+        )
+
+        story = []
+
+        # 1) 제목
+        suju_list = df_export["수주번호"].dropna().astype(str).unique()
+        name_list = df_export["완성품명"].dropna().astype(str).unique()
+        title_text = f"{suju_list[0] if len(suju_list) else ''} {name_list[0] if len(name_list) else ''}".strip()
+
+        story.append(Paragraph(title_text, title_style))
+        story.append(Spacer(1, 12))
+
+        # 2) 상단 메모 (텍스트)
+        if pasted_text is not None and pasted_text.strip() != "":
+            # <, >, & 등 이스케이프 + 줄바꿈을 <br/>로 변환
+            safe_text = escape(pasted_text).replace("\n", "<br/>")
+            story.append(Paragraph(safe_text, text_style))
+            story.append(Spacer(1, 12))
+
+        # 3) (원하면 이미지도 여기에)
+        if uploaded_image:
+            try:
+                img = Image(uploaded_image, width=400, height=300)
+                story.append(img)
+                story.append(Spacer(1, 12))
+            except Exception:
+                pass
+
+        # 표 구성: 기존 + 1P, 2P, 3P, 4P 4칸 추가
+        base_cols = ["품번", "품명", "작불", "예상재고", "ERP재고"]
+        table_cols = base_cols + ["1P", "2P", "3P", "4P"]
+        table_data = [table_cols]
+
+        for _, row in df_export.iterrows():
+            # df_export 에는 1P~4P 컬럼이 없으니까, 기존 데이터만 넣고 4칸은 공백으로 채움
+            base_values = [str(row.get(c, "")) for c in base_cols]
+            extra_values = ["", "", "", ""]  # 1P, 2P, 3P, 4P
+            table_data.append(base_values + extra_values)
+
+        # 행 높이 (헤더는 기본, 데이터 행만 높게)
+        default_height = None        # 헤더
+        data_height = 40             # 데이터 행
+        row_heights = [default_height] + [data_height] * (len(table_data) - 1)
+
+        # 컬럼 폭 설정
+        #  - 앞의 5개 컬럼은 None(자동)
+        #  - 1P~4P 4칸만 넓게
+        col_widths = [None, None, None, None, None, 130, 130, 80, 80]
+
+        table = Table(
+            table_data,
+            repeatRows=1,
+            rowHeights=row_heights,
+            colWidths=col_widths,
+            hAlign="LEFT",   # 표 전체 왼쪽 정렬
+        )
+
+        table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
+                    ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+                    ("FONTNAME", (0, 0), (-1, -1), KOREAN_FONT_NAME),
+                    ("FONTSIZE", (0, 0), (-1, -1), 8),
+                    ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
+
+                    ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+
+                    # 데이터 행만 위/아래 여백 크게
+                    ("TOPPADDING",    (0, 1), (-1, -1), 12),
+                    ("BOTTOMPADDING", (0, 1), (-1, -1), 12),
+                ]
+            )
+        )
+
+        story.append(table)
+
+        doc.build(story)
+        pdf_bytes = buffer.getvalue()
+        buffer.close()
         return pdf_bytes
 
     # 🔹 소형 라벨프린터(100×120mm)용 부자재반입 라벨 PDF
@@ -511,7 +652,7 @@ if REPORTLAB_AVAILABLE:
 
         buffer = io.BytesIO()
 
-        # 🔸 페이지 크기: 100mm x 120mm
+        # 페이지 크기: 100mm x 120mm
         LABEL_WIDTH = 100 * mm
         LABEL_HEIGHT = 120 * mm
 
@@ -573,7 +714,7 @@ if REPORTLAB_AVAILABLE:
 
             story.append(Spacer(1, 10))
 
-            # 🔥 바코드 (사용자가 입력한 부자재반입요청번호)
+            # 바코드 (사용자가 입력한 부자재반입요청번호)
             bc = code128.Code128(barcode_value, barHeight=25 * mm, barWidth=0.4)
             barcode_drawing = Drawing(bc.width, bc.height)
             barcode_drawing.add(bc)
@@ -595,6 +736,7 @@ if REPORTLAB_AVAILABLE:
 else:
     def generate_pdf(*args, **kwargs):
         raise RuntimeError("reportlab 패키지가 설치돼 있지 않습니다.")
+
     def generate_label_pdf(*args, **kwargs):
         raise RuntimeError("reportlab 패키지가 설치돼 있지 않습니다.")
 
