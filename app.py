@@ -785,7 +785,7 @@ if REPORTLAB_AVAILABLE:
 
             bc = code128.Code128(
                 barcode_value,
-                barHeight=25 * mm,
+                barHeight=15 * mm,
                 barWidth=bar_width,
             )
 
