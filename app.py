@@ -78,7 +78,7 @@ except ModuleNotFoundError:
     KOREAN_FONT_NAME = "Helvetica"
 
 
-st.set_page_config(page_title="부자재 입고 및 환입 관리", layout="wide")
+st.set_page_config(page_title="부자재 관리 시스템", layout="wide")
 
 # -----------------------------
 # 유틸 함수
@@ -642,7 +642,7 @@ else:
 # -----------------------------
 # 메인 화면
 # -----------------------------
-st.title("부자재 입고 / 환입 관리")
+st.title("부자재 관리 시스템")
 
 menu = st.radio(
     "메뉴 선택",
