@@ -1516,7 +1516,7 @@ if menu == "↩️ 환입 관리":
         df_visible = df_full[[c for c in VISIBLE_COLS if c in df_full.columns]].copy()
         st.dataframe(df_visible, use_container_width=True)
 
-         label_source_cols = ["품번", "품명", "단위수량", "환입일"]
+        label_source_cols = ["품번", "품명", "단위수량", "환입일"]
         if all(col in df_full.columns for col in label_source_cols):
             st.markdown("#### 🏷 라벨 출력용 자재 선택")
 
