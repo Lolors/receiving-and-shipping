@@ -1729,7 +1729,30 @@ if menu == "↩️ 환입 관리":
                 df_full = st.session_state["환입재고예상"]
                 st.success("환입 예상재고 데이터가 초기화되었습니다.")
 
-        
+    # ----- 환입 예상재고 데이터 표시 + CSV + PDF + 라벨 -----
+    st.markdown("### 환입 예상재고 데이터")
+
+    df_full = st.session_state.get(
+        "환입재고예상", pd.DataFrame(columns=CSV_COLS)
+    )
+
+    if df_full.empty:
+        st.write("환입 데이터 불러오기를 실행하면 이곳에 결과가 표시됩니다.")
+    else:
+        # 화면용: 계산된 df_full 그대로 VISIBLE_COLS 기준으로 보여주기
+        df_visible = df_full[[c for c in VISIBLE_COLS if c in df_full.columns]].copy()
+
+        # 🔹 이 표에 바로 라벨 선택 컬럼 추가
+        if "라벨선택" not in df_visible.columns:
+            df_visible.insert(0, "라벨선택", False)
+
+        df_visible_edit = st.data_editor(
+            df_visible,
+            use_container_width=True,
+            num_rows="dynamic",
+            key="return_visible_editor",
+        )
+
         # ---------- 품번별 수주번호 선택 (CSV 통합용) ----------
         merge_choices = {}
         work = df_full.copy()
@@ -1860,7 +1883,7 @@ if menu == "↩️ 환입 관리":
 
         csv_export_df = grouped[CSV_COLS].copy()
 
-        # ---------- CSV 받기 버튼까지 그대로 둔 뒤에, 아래부터 레이아웃 교체 ----------
+        # ---------- CSV 받기 버튼 ----------
         csv_data = csv_export_df.to_csv(index=False).encode("utf-8-sig")
         st.download_button(
             "📥 CSV 받기",
@@ -1883,7 +1906,7 @@ if menu == "↩️ 환입 관리":
                     "PDF 메모",
                     height=100,
                     key="pdf_note_text",
-                    placeholder="여기에 메모나 특이사항을 입력/붙여넣기 하세요."
+                    placeholder="여기에 메모나 특이사항을 입력/붙여넣기 하세요.",
                 )
 
                 pdf_bytes = generate_pdf(csv_export_df, pasted_text=pasted_text)
@@ -1961,7 +1984,7 @@ if menu == "↩️ 환입 관리":
             download_disabled = True
             download_help = ""
 
-            # 라벨선택 / 품번 컬럼 체크
+            # 라벨선택 / 품번 컬럼 체크 (여기서는 df_visible_edit 이미 정의됨)
             if "라벨선택" not in df_visible_edit.columns:
                 st.error("라벨선택 컬럼을 찾을 수 없습니다.")
             elif "품번" not in df_visible_edit.columns:
@@ -2014,6 +2037,7 @@ if menu == "↩️ 환입 관리":
                 disabled=download_disabled,
                 key="btn_make_labels",
             )
+
 
 # ============================================================
 # 🧩 5. 공통자재 탭
