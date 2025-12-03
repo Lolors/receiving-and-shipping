@@ -1617,10 +1617,18 @@ if menu == "↩️ 환입 관리":
             key="barcode_input",
         )
 
+        # 🔸 라벨용 단위수량 입력
+        unit_value = st.text_input(
+            "단위수량 입력 (라벨에 표시될 값)",
+            key="unit_input",
+        )
+
         # 🔸 라벨 PDF 출력 버튼
         if st.button("🏷 선택한 자재 바코드 라벨 PDF 만들기", key="btn_make_labels"):
             if not barcode_value:
                 st.warning("부자재반입요청번호를 먼저 입력해주세요.")
+            elif not unit_value:
+                st.warning("단위수량을 먼저 입력해주세요.")
             else:
                 if "라벨선택" not in df_visible_edit.columns:
                     st.error("라벨선택 컬럼을 찾을 수 없습니다.")
@@ -1641,9 +1649,10 @@ if menu == "↩️ 환입 관리":
                             )
 
                             # df_full에서 실제 라벨에 사용할 데이터 추출
-                            required_cols = ["품명", "품번", "단위수량", "환입일"]
+                            # 🔸 단위수량은 이제 df에서 안 쓰고, unit_value(사용자 입력)를 사용
+                            required_cols = ["품명", "품번", "환입일"]
                             if not all(col in df_full.columns for col in required_cols):
-                                st.error("라벨 생성에 필요한 컬럼(품명, 품번, 단위수량, 환입일)이 부족합니다.")
+                                st.error("라벨 생성에 필요한 컬럼(품명, 품번, 환입일)이 부족합니다.")
                             else:
                                 df_labels = df_full[
                                     df_full["품번"].astype(str).isin(selected_parts)
@@ -1653,6 +1662,7 @@ if menu == "↩️ 환입 관리":
                                     st.warning("선택한 자재에서 라벨에 사용할 데이터를 찾지 못했습니다.")
                                 else:
                                     try:
+                                        # 🔥 단위수량은 unit_value로 넘김
                                         pdf_labels = generate_label_pdf(df_labels, barcode_value, unit_value)
                                         st.download_button(
                                             "📄 부자재반입 라벨 PDF 다운로드",
