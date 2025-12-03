@@ -598,7 +598,7 @@ if REPORTLAB_AVAILABLE:
         # 🔥 컬럼 폭 설정
         #  - 앞의 5개 컬럼은 None(자동)
         #  - 1P~4P 4칸만 넓게(예: 80pt씩) → 필요하면 숫자 키워서 조절
-        col_widths = [None, None, None, None, None, 80, 80, 80, 80]
+        col_widths = [None, None, None, None, None, 150, 150, 80, 80]
 
         table = Table(
                 table_data,
