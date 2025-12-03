@@ -587,7 +587,7 @@ if REPORTLAB_AVAILABLE:
                 table_data.append([str(row.get(c, "")) for c in table_cols])
 
         # 🔥 행 높이 강제 적용 (지금의 약 5배 수준)
-        row_height = 100   # 필요하면 45~55 등으로 조절
+        row_height = 45   # 필요하면 45~55 등으로 조절
         row_heights = [row_height] * len(table_data)
 
         table = Table(
