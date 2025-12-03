@@ -586,17 +586,36 @@ if REPORTLAB_AVAILABLE:
         for _, row in df_export.iterrows():
                 table_data.append([str(row.get(c, "")) for c in table_cols])
 
-        # 🔥 행 높이 강제 적용 (지금의 약 5배 수준)
-        row_height = 45   # 필요하면 45~55 등으로 조절
+        # 🔥 행 높이 강제 적용 (5배)
+        row_height = 40
         row_heights = [row_height] * len(table_data)
 
         table = Table(
                 table_data,
                 repeatRows=1,
-                rowHeights=row_heights,   # ← 행 높이 강제 고정
+                rowHeights=row_heights,
+                hAlign="LEFT",          # ← 표 자체를 왼쪽 정렬
         )
 
-        table.setStyle(table_style)
+        table.setStyle(
+                TableStyle(
+                        [
+                                ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
+                                ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
+                                ("ALIGN", (0, 0), (-1, -1), "LEFT"),  # 셀 내부 왼쪽정렬
+                                ("FONTNAME", (0, 0), (-1, -1), KOREAN_FONT_NAME),
+                                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                                ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
+
+                                ("LEFTPADDING", (0, 0), (-1, -1), 0),   # ← 표 왼쪽여백 0
+                                ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+                                ("TOPPADDING", (0, 0), (-1, -1), 12),
+                                ("BOTTOMPADDING", (0, 0), (-1, -1), 12),
+                        ]
+                )
+        )
+
+        # 표 추가
         story.append(table)
 
         doc.build(story)
