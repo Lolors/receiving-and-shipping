@@ -549,6 +549,7 @@ if REPORTLAB_AVAILABLE:
 
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 20),
                 ("TOPPADDING",    (0, 0), (-1, -1), 20),
+                ("MINROWHEIGHT",    (0, 0), (-1, -1), 35),
             ]
         )
 
