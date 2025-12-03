@@ -769,8 +769,8 @@ if REPORTLAB_AVAILABLE:
 
             # ----- 제목 -----
             story.append(Paragraph("부자재반입", title_style))
-            # 공백 2줄 정도
-            story.append(Spacer(1, field_label_style.leading * 2))
+            # 공백 3줄 정도
+            story.append(Spacer(1, field_label_style.leading * 3))
 
             # ----- 필드 4줄을 2열 테이블로 구성 (왼쪽 열 너비 고정) -----
             # 왼쪽 열 너비를 고정하면 오른쪽 값 시작 위치가 모두 동일해짐
