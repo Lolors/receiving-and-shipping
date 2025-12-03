@@ -1733,65 +1733,137 @@ if menu == "↩️ 환입 관리":
                 st.success("환입 관리 / 환입 예상재고 데이터가 모두 초기화되었습니다.")
 
 
-    # ----- 환입 예상재고 데이터 표시 + CSV + PDF + 라벨 -----
-    st.markdown("### 환입 예상재고 데이터")
+# ----- 환입 예상재고 데이터 표시 + CSV + PDF + 라벨 -----
+st.markdown("### 환입 예상재고 데이터")
 
-    df_full = st.session_state.get(
-        "환입재고예상", pd.DataFrame(columns=CSV_COLS)
+df_full = st.session_state.get(
+    "환입재고예상", pd.DataFrame(columns=CSV_COLS)
+)
+
+if df_full.empty:
+    st.write("환입 데이터 불러오기를 실행하면 이곳에 결과가 표시됩니다.")
+else:
+    # 🔹 1) 공통부자재용 '추가수주' 컬럼이 없으면 추가 (문자열로)
+    if "추가수주" not in df_full.columns:
+        df_full["추가수주"] = ""
+
+    # 🔹 2) 화면에 보여줄 컬럼 구성
+    base_cols = [c for c in VISIBLE_COLS if c in df_full.columns]
+
+    # 추가수주 컬럼을 표에 포함
+    if "추가수주" not in base_cols:
+        base_cols.append("추가수주")
+
+    df_visible = df_full[base_cols].copy()
+
+    # 🔹 3) 이 표에 바로 라벨 선택 컬럼 추가
+    if "라벨선택" not in df_visible.columns:
+        df_visible.insert(0, "라벨선택", False)
+
+    # 🔹 4) data_editor로 사용자 입력 받기
+    df_visible_edit = st.data_editor(
+        df_visible,
+        use_container_width=True,
+        num_rows="dynamic",
+        key="return_visible_editor",
     )
 
-    if df_full.empty:
-        st.write("환입 데이터 불러오기를 실행하면 이곳에 결과가 표시됩니다.")
+    # 🔹 5) 사용자가 입력한 '추가수주'를 df_full에 반영
+    # (인덱스는 유지되고 있으므로 index 기준으로 맞춰서 덮어쓰기)
+    if "추가수주" in df_visible_edit.columns:
+        df_full.loc[df_visible_edit.index, "추가수주"] = df_visible_edit["추가수주"]
+
+    # 라벨 선택 값(df_visible_edit["라벨선택"])은 화면용이라
+    # df_full에 꼭 저장 안 해도 되면 무시해도 됨
+
+    # 🔹 6) 공통부자재용: 추가수주까지 합산해서 재계산
+    aggs = st.session_state.get("aggregates", None)
+
+    if aggs is None:
+        st.warning("공통부자재 합산을 위해서는 먼저 '환입 데이터 불러오기' 버튼으로 집계를 만들어야 합니다.")
     else:
-        # 화면용: 계산된 df_full 그대로 VISIBLE_COLS 기준으로 보여주기
-        df_visible = df_full[[c for c in VISIBLE_COLS if c in df_full.columns]].copy()
+        import re
 
-        # 🔹 이 표에 바로 라벨 선택 컬럼 추가
-        if "라벨선택" not in df_visible.columns:
-            df_visible.insert(0, "라벨선택", False)
+        def recompute_row_with_extra_orders(row):
+            part = str(row.get("품번", "")).strip()
+            base_suju = str(row.get("수주번호", "")).strip()
+            extra_text = str(row.get("추가수주", "")).strip()
 
-        df_visible_edit = st.data_editor(
-            df_visible,
-            use_container_width=True,
-            num_rows="dynamic",
-            key="return_visible_editor",
-        )
+            if not part or not base_suju:
+                # 품번이나 기본 수주번호가 없으면 계산 안 함
+                return row
 
-        # ---------- 품번별 수주번호 선택 (CSV 통합용) ----------
-        merge_choices = {}
-        work = df_full.copy()
+            # 👉 합산에 사용할 전체 수주번호 리스트
+            suju_list = [base_suju]
+            if extra_text:
+                extra_ids = [
+                    s.strip()
+                    for s in re.split(r"[ ,;/]+", extra_text)
+                    if s.strip()
+                ]
+                suju_list.extend(extra_ids)
 
-        if "품번" in work.columns and "수주번호" in work.columns:
-            suju_counts = work.groupby("품번")["수주번호"].nunique()
-            dup_parts = suju_counts[suju_counts > 1].index.tolist()
+            in_tbl = aggs.get("in")
+            res_tbl = aggs.get("result")
 
-            if dup_parts:
-                st.markdown("#### 품번별 수주번호 선택 (CSV 통합용)")
-                for part in dup_parts:
-                    sub = work[work["품번"] == part]
-                    combos = sub[["수주번호", "완성품명"]].drop_duplicates()
+            # ----- 1) 입고 합계 (품번 + 수주번호)
+            erp_out = 0.0
+            real_in = 0.0
+            if isinstance(in_tbl, pd.DataFrame) and not in_tbl.empty:
+                mask_in = (
+                    in_tbl["품번"].astype(str) == part
+                ) & (
+                    in_tbl["수주번호"].astype(str).isin(suju_list)
+                )
+                tmp_in = in_tbl.loc[mask_in]
+                if not tmp_in.empty:
+                    erp_out = tmp_in["ERP불출수량"].apply(safe_num).sum()
+                    real_in = tmp_in["현장실물입고"].apply(safe_num).sum()
 
-                    options = [
-                        f"{str(row['수주번호'])} {str(row['완성품명'])}"
-                        for _, row in combos.iterrows()
-                    ]
-                    if not options:
-                        continue
+            # ----- 2) 생산/샘플 합계 (수주번호만 기준)
+            prod = qc = etc = 0.0
+            if (
+                isinstance(res_tbl, pd.DataFrame)
+                and not res_tbl.empty
+                and "수주번호" in res_tbl.columns
+            ):
+                mask_res = res_tbl["수주번호"].astype(str).isin(suju_list)
+                tmp_res = res_tbl.loc[mask_res]
+                if not tmp_res.empty:
+                    if "생산수량" in tmp_res.columns:
+                        prod = tmp_res["생산수량"].apply(safe_num).sum()
+                    if "QC샘플" in tmp_res.columns:
+                        qc = tmp_res["QC샘플"].apply(safe_num).sum()
+                    if "기타샘플" in tmp_res.columns:
+                        etc = tmp_res["기타샘플"].apply(safe_num).sum()
 
-                    key = f"merge_choice_{part}"
-                    default = st.session_state.get(key, options[0])
-                    try:
-                        default_index = options.index(default)
-                    except ValueError:
-                        default_index = 0
+            # ----- 3) 원불/작불은 기존 row 값을 그대로 사용
+            orig_def = safe_num(row.get("원불", 0))
+            proc_def = safe_num(row.get("작불", 0))
+            unit = safe_num(row.get("단위수량", 0))
 
-                    choice = st.selectbox(
-                        f"품번 {part} - 수주/완성품명 선택",
-                        options,
-                        index=default_index,
-                        key=key,
-                    )
-                    merge_choices[part] = choice
+            # ----- 4) 재계산 값 row에 반영
+            row["ERP불출수량"] = erp_out
+            row["현장실물입고"] = real_in
+            row["생산수량"] = prod
+            row["QC샘플"] = qc
+            row["기타샘플"] = etc
+
+            row["예상재고"] = (
+                real_in
+                - (prod + qc + etc) * unit
+                - orig_def
+                - proc_def
+            )
+
+            return row
+
+        # 🔥 df_full 전체에 대해 재계산 적용
+        df_full = df_full.apply(recompute_row_with_extra_orders, axis=1)
+
+    # 🔹 7) 재계산된 df_full을 다시 session_state에 저장
+    st.session_state["환입재고예상"] = df_full
+
 
         # ---------- 1단계: (수주번호, 지시번호, 품번) 동일한 행 먼저 통합 ----------
         key_cols = ["수주번호", "지시번호", "품번"]
