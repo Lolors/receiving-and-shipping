@@ -1733,136 +1733,419 @@ if menu == "↩️ 환입 관리":
                 st.success("환입 관리 / 환입 예상재고 데이터가 모두 초기화되었습니다.")
 
 
-# ----- 환입 예상재고 데이터 표시 + CSV + PDF + 라벨 -----
-st.markdown("### 환입 예상재고 데이터")
+    # ----- 환입 예상재고 데이터 표시 + CSV + PDF + 라벨 -----
+    st.markdown("### 환입 예상재고 데이터")
 
-df_full = st.session_state.get(
-    "환입재고예상", pd.DataFrame(columns=CSV_COLS)
-)
-
-if df_full.empty:
-    st.write("환입 데이터 불러오기를 실행하면 이곳에 결과가 표시됩니다.")
-else:
-    # 🔹 1) 공통부자재용 '추가수주' 컬럼이 없으면 추가 (문자열로)
-    if "추가수주" not in df_full.columns:
-        df_full["추가수주"] = ""
-
-    # 🔹 2) 화면에 보여줄 컬럼 구성
-    base_cols = [c for c in VISIBLE_COLS if c in df_full.columns]
-
-    # 추가수주 컬럼을 표에 포함
-    if "추가수주" not in base_cols:
-        base_cols.append("추가수주")
-
-    df_visible = df_full[base_cols].copy()
-
-    # 🔹 3) 이 표에 바로 라벨 선택 컬럼 추가
-    if "라벨선택" not in df_visible.columns:
-        df_visible.insert(0, "라벨선택", False)
-
-    # 🔹 4) data_editor로 사용자 입력 받기
-    df_visible_edit = st.data_editor(
-        df_visible,
-        use_container_width=True,
-        num_rows="dynamic",
-        key="return_visible_editor",
+    df_full = st.session_state.get(
+        "환입재고예상", pd.DataFrame(columns=CSV_COLS)
     )
 
-    # 🔹 5) 사용자가 입력한 '추가수주'를 df_full에 반영
-    # (인덱스는 유지되고 있으므로 index 기준으로 맞춰서 덮어쓰기)
-    if "추가수주" in df_visible_edit.columns:
-        df_full.loc[df_visible_edit.index, "추가수주"] = df_visible_edit["추가수주"]
-
-    # 라벨 선택 값(df_visible_edit["라벨선택"])은 화면용이라
-    # df_full에 꼭 저장 안 해도 되면 무시해도 됨
-
-    # 🔹 6) 공통부자재용: 추가수주까지 합산해서 재계산
-    aggs = st.session_state.get("aggregates", None)
-
-    if aggs is None:
-        st.warning("공통부자재 합산을 위해서는 먼저 '환입 데이터 불러오기' 버튼으로 집계를 만들어야 합니다.")
+    if df_full.empty:
+        st.write("환입 데이터 불러오기를 실행하면 이곳에 결과가 표시됩니다.")
     else:
-        import re
+        # 🔹 1) 공통부자재용 '추가수주' 컬럼이 없으면 추가 (문자열로)
+        if "추가수주" not in df_full.columns:
+            df_full["추가수주"] = ""
 
-        def recompute_row_with_extra_orders(row):
-            part = str(row.get("품번", "")).strip()
-            base_suju = str(row.get("수주번호", "")).strip()
-            extra_text = str(row.get("추가수주", "")).strip()
+        # 화면용: 계산된 df_full 그대로 VISIBLE_COLS + 추가수주 컬럼까지 보여주기
+        base_cols = [c for c in VISIBLE_COLS if c in df_full.columns]
+        if "추가수주" not in base_cols:
+            base_cols.append("추가수주")
 
-            if not part or not base_suju:
-                # 품번이나 기본 수주번호가 없으면 계산 안 함
+        df_visible = df_full[base_cols].copy()
+
+        # 🔹 이 표에 바로 라벨 선택 컬럼 추가
+        if "라벨선택" not in df_visible.columns:
+            df_visible.insert(0, "라벨선택", False)
+
+        # 🔹 data_editor로 사용자 입력 받기
+        df_visible_edit = st.data_editor(
+            df_visible,
+            use_container_width=True,
+            num_rows="dynamic",
+            key="return_visible_editor",
+        )
+
+        # 🔹 사용자가 입력한 '추가수주'를 df_full에 반영
+        if "추가수주" in df_visible_edit.columns:
+            df_full.loc[df_visible_edit.index, "추가수주"] = df_visible_edit["추가수주"]
+
+        # 🔹 6) 공통부자재용: 추가수주까지 합산해서 재계산
+        aggs = st.session_state.get("aggregates", None)
+
+        if aggs is None:
+            st.warning("공통부자재 합산을 위해서는 먼저 '환입 데이터 불러오기' 버튼으로 집계를 만들어야 합니다.")
+        else:
+            import re
+
+            def recompute_row_with_extra_orders(row):
+                part = str(row.get("품번", "")).strip()
+                base_suju = str(row.get("수주번호", "")).strip()
+                extra_text = str(row.get("추가수주", "")).strip()
+
+                if not part or not base_suju:
+                    # 품번이나 기본 수주번호가 없으면 계산 안 함
+                    return row
+
+                # 👉 합산에 사용할 전체 수주번호 리스트
+                suju_list = [base_suju]
+                if extra_text:
+                    extra_ids = [
+                        s.strip()
+                        for s in re.split(r"[ ,;/]+", extra_text)
+                        if s.strip()
+                    ]
+                    suju_list.extend(extra_ids)
+
+                in_tbl = aggs.get("in")
+                res_tbl = aggs.get("result")
+
+                # ----- 1) 입고 합계 (품번 + 수주번호)
+                erp_out = 0.0
+                real_in = 0.0
+                if isinstance(in_tbl, pd.DataFrame) and not in_tbl.empty:
+                    mask_in = (
+                        in_tbl["품번"].astype(str) == part
+                    ) & (
+                        in_tbl["수주번호"].astype(str).isin(suju_list)
+                    )
+                    tmp_in = in_tbl.loc[mask_in]
+                    if not tmp_in.empty:
+                        erp_out = tmp_in["ERP불출수량"].apply(safe_num).sum()
+                        real_in = tmp_in["현장실물입고"].apply(safe_num).sum()
+
+                # ----- 2) 생산/샘플 합계 (수주번호만 기준)
+                prod = qc = etc = 0.0
+                if (
+                    isinstance(res_tbl, pd.DataFrame)
+                    and not res_tbl.empty
+                    and "수주번호" in res_tbl.columns
+                ):
+                    mask_res = res_tbl["수주번호"].astype(str).isin(suju_list)
+                    tmp_res = res_tbl.loc[mask_res]
+                    if not tmp_res.empty:
+                        if "생산수량" in tmp_res.columns:
+                            prod = tmp_res["생산수량"].apply(safe_num).sum()
+                        if "QC샘플" in tmp_res.columns:
+                            qc = tmp_res["QC샘플"].apply(safe_num).sum()
+                        if "기타샘플" in tmp_res.columns:
+                            etc = tmp_res["기타샘플"].apply(safe_num).sum()
+
+                # ----- 3) 원불/작불은 기존 row 값을 그대로 사용
+                orig_def = safe_num(row.get("원불", 0))
+                proc_def = safe_num(row.get("작불", 0))
+                unit = safe_num(row.get("단위수량", 0))
+
+                # ----- 4) 재계산 값 row에 반영
+                row["ERP불출수량"] = erp_out
+                row["현장실물입고"] = real_in
+                row["생산수량"] = prod
+                row["QC샘플"] = qc
+                row["기타샘플"] = etc
+
+                row["예상재고"] = (
+                    real_in
+                    - (prod + qc + etc) * unit
+                    - orig_def
+                    - proc_def
+                )
+
                 return row
 
-            # 👉 합산에 사용할 전체 수주번호 리스트
-            suju_list = [base_suju]
-            if extra_text:
-                extra_ids = [
-                    s.strip()
-                    for s in re.split(r"[ ,;/]+", extra_text)
-                    if s.strip()
-                ]
-                suju_list.extend(extra_ids)
+            # 🔥 df_full 전체에 대해 재계산 적용
+            df_full = df_full.apply(recompute_row_with_extra_orders, axis=1)
 
-            in_tbl = aggs.get("in")
-            res_tbl = aggs.get("result")
+        # 🔹 7) 재계산된 df_full을 다시 session_state에 저장
+        st.session_state["환입재고예상"] = df_full
 
-            # ----- 1) 입고 합계 (품번 + 수주번호)
-            erp_out = 0.0
-            real_in = 0.0
-            if isinstance(in_tbl, pd.DataFrame) and not in_tbl.empty:
-                mask_in = (
-                    in_tbl["품번"].astype(str) == part
-                ) & (
-                    in_tbl["수주번호"].astype(str).isin(suju_list)
+        # ----------------------------------------------------
+        # 🔽 여기서부터는 기존 CSV / PDF / 라벨 로직 그대로 이어짐
+        # ----------------------------------------------------
+        # ---------- 품번별 수주번호 선택 (CSV 통합용) ----------
+        merge_choices = {}
+        work = df_full.copy()
+
+        if "품번" in work.columns and "수주번호" in work.columns:
+            suju_counts = work.groupby("품번")["수주번호"].nunique()
+            dup_parts = suju_counts[suju_counts > 1].index.tolist()
+
+            if dup_parts:
+                st.markdown("#### 품번별 수주번호 선택 (CSV 통합용)")
+                for part in dup_parts:
+                    sub = work[work["품번"] == part]
+                    combos = sub[["수주번호", "완성품명"]].drop_duplicates()
+
+                    options = [
+                        f"{str(row['수주번호'])} {str(row['완성품명'])}"
+                        for _, row in combos.iterrows()
+                    ]
+                    if not options:
+                        continue
+
+                    key = f"merge_choice_{part}"
+                    default = st.session_state.get(key, options[0])
+                    try:
+                        default_index = options.index(default)
+                    except ValueError:
+                        default_index = 0
+
+                    choice = st.selectbox(
+                        f"품번 {part} - 수주/완성품명 선택",
+                        options,
+                        index=default_index,
+                        key=key,
+                    )
+                    merge_choices[part] = choice
+
+        # ---------- 1단계: (수주번호, 지시번호, 품번) 동일한 행 먼저 통합 ----------
+        key_cols = ["수주번호", "지시번호", "품번"]
+        key_cols = [c for c in key_cols if c in work.columns]
+
+        if key_cols:
+            agg_dict_step1 = {}
+            for col in work.columns:
+                if col in key_cols:
+                    continue
+                if col in ["ERP불출수량", "현장실물입고"]:
+                    agg_dict_step1[col] = "sum"
+                else:
+                    agg_dict_step1[col] = "first"
+
+            work = work.groupby(key_cols, as_index=False).agg(agg_dict_step1)
+
+        # ---------- 2단계: 품번 단위로 최종 통합 ----------
+        result_rows = []
+
+        header_cols = [
+            "수주번호",
+            "지시번호",
+            "생산공정",
+            "생산시작일",
+            "생산종료일",
+            "종료조건",
+            "환입일",
+            "환입주차",
+            "완성품번",
+            "완성품명",
+            "품명",
+        ]
+
+        sum_cols = [
+            "ERP불출수량",
+            "현장실물입고",
+            "지시수량",
+            "생산수량",
+            "QC샘플",
+            "기타샘플",
+            "원불",
+            "작불",
+            "예상재고",
+        ]
+
+        unit_col = "단위수량"
+
+        if "품번" in work.columns:
+            for part, part_df in work.groupby("품번"):
+                # 사용자가 선택한 대표 수주번호 적용
+                if part in merge_choices:
+                    sel_suju, _, _ = merge_choices[part].partition(" ")
+                    base = part_df[part_df["수주번호"].astype(str) == sel_suju]
+                    header_row = base.iloc[0] if not base.empty else part_df.iloc[0]
+                else:
+                    header_row = part_df.iloc[0]
+
+                row = {}
+                row["품번"] = part
+
+                # 헤더 계열: 대표 수주/지시의 값 유지
+                for col in header_cols:
+                    row[col] = header_row.get(col, None)
+
+                # 수량 계열: 모두 합계
+                for col in sum_cols:
+                    if col in part_df.columns:
+                        row[col] = part_df[col].apply(safe_num).sum()
+                    else:
+                        row[col] = 0
+
+                # 단위수량: 합치지 않고 대표값 only
+                row[unit_col] = safe_num(header_row.get(unit_col, 0))
+
+                # ERP재고: 같은 품번이면 동일 → 대표값만
+                if "ERP재고" in part_df.columns:
+                    non_na = part_df["ERP재고"].dropna()
+                    row["ERP재고"] = (
+                        safe_num(non_na.iloc[0]) if not non_na.empty else 0
+                    )
+                else:
+                    row["ERP재고"] = 0
+
+                result_rows.append(row)
+
+        grouped = pd.DataFrame(result_rows) if result_rows else work.copy()
+
+        # CSV 컬럼 정리
+        for col in CSV_COLS:
+            if col not in grouped.columns:
+                grouped[col] = None
+
+        csv_export_df = grouped[CSV_COLS].copy()
+
+        # ---------- CSV 받기 버튼 ----------
+        csv_data = csv_export_df.to_csv(index=False).encode("utf-8-sig")
+        st.download_button(
+            "📥 CSV 받기",
+            data=csv_data,
+            file_name="환입_예상재고_통합.csv",
+            mime="text/csv",
+        )
+
+        # 🔹 PDF / 비고코멘트 / 바코드 라벨을 좌·우 2열 레이아웃으로 배치
+        col_left, col_right = st.columns(2)
+
+        # =========================
+        # ⬅️ 왼쪽 컬럼: PDF + 입고 비고 코멘트
+        # =========================
+        with col_left:
+            if REPORTLAB_AVAILABLE and not csv_export_df.empty:
+                st.markdown("### 📑 PDF 상단 메모")
+
+                pasted_text = st.text_area(
+                    "PDF 메모",
+                    height=100,
+                    key="pdf_note_text",
+                    placeholder="여기에 메모나 특이사항을 입력/붙여넣기 하세요.",
                 )
-                tmp_in = in_tbl.loc[mask_in]
-                if not tmp_in.empty:
-                    erp_out = tmp_in["ERP불출수량"].apply(safe_num).sum()
-                    real_in = tmp_in["현장실물입고"].apply(safe_num).sum()
 
-            # ----- 2) 생산/샘플 합계 (수주번호만 기준)
-            prod = qc = etc = 0.0
-            if (
-                isinstance(res_tbl, pd.DataFrame)
-                and not res_tbl.empty
-                and "수주번호" in res_tbl.columns
-            ):
-                mask_res = res_tbl["수주번호"].astype(str).isin(suju_list)
-                tmp_res = res_tbl.loc[mask_res]
-                if not tmp_res.empty:
-                    if "생산수량" in tmp_res.columns:
-                        prod = tmp_res["생산수량"].apply(safe_num).sum()
-                    if "QC샘플" in tmp_res.columns:
-                        qc = tmp_res["QC샘플"].apply(safe_num).sum()
-                    if "기타샘플" in tmp_res.columns:
-                        etc = tmp_res["기타샘플"].apply(safe_num).sum()
+                pdf_bytes = generate_pdf(csv_export_df, pasted_text=pasted_text)
 
-            # ----- 3) 원불/작불은 기존 row 값을 그대로 사용
-            orig_def = safe_num(row.get("원불", 0))
-            proc_def = safe_num(row.get("작불", 0))
-            unit = safe_num(row.get("단위수량", 0))
+                st.download_button(
+                    "📄 PDF 받기",
+                    data=pdf_bytes,
+                    file_name="환입_예상재고.pdf",
+                    mime="application/pdf",
+                )
+            elif not REPORTLAB_AVAILABLE:
+                st.info("PDF 저장 기능을 쓰려면 `pip install reportlab` 설치가 필요합니다.")
 
-            # ----- 4) 재계산 값 row에 반영
-            row["ERP불출수량"] = erp_out
-            row["현장실물입고"] = real_in
-            row["생산수량"] = prod
-            row["QC샘플"] = qc
-            row["기타샘플"] = etc
+            # ----- 입고 시트 비고 코멘트 -----
+            st.markdown("### 📝 입고 비고 코멘트")
 
-            row["예상재고"] = (
-                real_in
-                - (prod + qc + etc) * unit
-                - orig_def
-                - proc_def
+            in_suju_col = pick_col(df_in_raw, "B", ["수주번호"])
+            in_jisi_col = pick_col(df_in_raw, "C", ["지시번호"])
+            in_part_col = pick_col(df_in_raw, "M", ["품번"])
+            in_cmt_col = pick_col(df_in_raw, "V", ["비고", "비고2"])
+
+            if in_suju_col and in_jisi_col and in_part_col and in_cmt_col:
+                df_in_comment = df_in_raw[
+                    [in_suju_col, in_jisi_col, in_part_col, in_cmt_col]
+                ].copy()
+                df_in_comment.columns = ["수주번호", "지시번호", "품번", "비고2"]
+                df_in_comment = df_in_comment.dropna(subset=["비고2"])
+
+                if not df_in_comment.empty:
+                    df_comment_merge = df_full.merge(
+                        df_in_comment,
+                        how="left",
+                        on=["수주번호", "지시번호", "품번"],
+                    )
+
+                    df_comment_show = df_comment_merge.dropna(subset=["비고2"])[
+                        ["품번", "품명", "비고2"]
+                    ].drop_duplicates()
+
+                    if not df_comment_show.empty:
+                        for _, row in df_comment_show.iterrows():
+                            st.markdown(
+                                f"- **{row['품번']} / {row['품명']}** : {row['비고2']}"
+                            )
+                    else:
+                        st.caption("표시할 비고 코멘트가 없습니다.")
+                else:
+                    st.caption("입고 시트에 비고 내용이 없습니다.")
+            else:
+                st.caption("입고 시트에서 비고 컬럼을 찾지 못했습니다.")
+
+        # =========================
+        # ➡️ 오른쪽 컬럼: 바코드 입력 + 라벨 PDF
+        # =========================
+        with col_right:
+            st.markdown("### 🏷 부자재반입라벨 출력")
+
+            # 한 줄에 나란히 입력
+            col_bc, col_unit = st.columns([3, 1])
+
+            with col_bc:
+                barcode_value = st.text_input(
+                    "부자재반입요청번호",
+                    placeholder="예: B202511-00120001",
+                    key="barcode_input",
+                )
+
+            with col_unit:
+                unit_value = st.text_input(
+                    "단위수량",
+                    key="unit_input",
+                )
+
+            pdf_labels = None
+            download_disabled = True
+            download_help = ""
+
+            # 라벨선택 / 품번 컬럼 체크 (여기서는 df_visible_edit 이미 정의됨)
+            if "라벨선택" not in df_visible_edit.columns:
+                st.error("라벨선택 컬럼을 찾을 수 없습니다.")
+            elif "품번" not in df_visible_edit.columns:
+                st.error("품번 컬럼이 없어 라벨 데이터를 만들 수 없습니다.")
+            else:
+                selected_mask = df_visible_edit["라벨선택"] == True
+                selected_parts = (
+                    df_visible_edit.loc[selected_mask, "품번"]
+                    .astype(str)
+                    .tolist()
+                )
+
+                required_cols = ["품명", "품번", "환입일"]
+                if not all(col in df_full.columns for col in required_cols):
+                    st.error("라벨 생성에 필요한 컬럼(품명, 품번, 환입일)이 부족합니다.")
+                else:
+                    if not barcode_value:
+                        download_help = "부자재반입요청번호를 입력하면 버튼이 활성화됩니다."
+                    elif not unit_value:
+                        download_help = "단위수량을 입력하면 버튼이 활성화됩니다."
+                    elif not selected_parts:
+                        download_help = "라벨을 출력할 자재를 한 개 이상 선택하세요."
+                    else:
+                        df_labels = df_full[
+                            df_full["품번"].astype(str).isin(selected_parts)
+                        ][required_cols].copy()
+
+                        if df_labels.empty:
+                            download_help = "선택한 자재에서 라벨에 사용할 데이터를 찾지 못했습니다."
+                        else:
+                            try:
+                                pdf_labels = generate_label_pdf(
+                                    df_labels,
+                                    barcode_value,
+                                    unit_value,
+                                )
+                                download_disabled = False
+                            except Exception as e:
+                                st.error(f"라벨 PDF 생성 중 오류: {e}")
+                                download_help = "라벨 PDF 생성 중 오류가 발생했습니다."
+
+            if download_help:
+                st.caption(download_help)
+
+            st.download_button(
+                "🏷 선택한 자재 바코드 라벨 PDF 만들기",
+                data=pdf_labels if pdf_labels is not None else b"",
+                file_name="부자재반입라벨.pdf",
+                mime="application/pdf",
+                disabled=download_disabled,
+                key="btn_make_labels",
             )
 
-            return row
-
-        # 🔥 df_full 전체에 대해 재계산 적용
-        df_full = df_full.apply(recompute_row_with_extra_orders, axis=1)
-
-    # 🔹 7) 재계산된 df_full을 다시 session_state에 저장
-    st.session_state["환입재고예상"] = df_full
 
 # ============================================================
 # 🧩 5. 공통자재 탭
