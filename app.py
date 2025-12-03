@@ -699,6 +699,25 @@ if REPORTLAB_AVAILABLE:
             alignment=TA_CENTER,
         )
 
+        # ✅ 바코드를 가로 중앙정렬하기 위한 래퍼 클래스
+        class CenteredBarcode:
+            def __init__(self, barcode):
+                self.barcode = barcode
+                self.avail_width = None
+
+            def wrap(self, availWidth, availHeight):
+                # 나중에 drawOn에서 중앙 정렬할 때 사용할 가용 너비 저장
+                self.avail_width = availWidth
+                return self.barcode.width, self.barcode.height
+
+            def drawOn(self, canvas, x, y):
+                # x는 leftMargin 위치, avail_width는 내용 영역 너비
+                if self.avail_width is None:
+                    cx = x
+                else:
+                    cx = x + (self.avail_width - self.barcode.width) / 2.0
+                self.barcode.drawOn(canvas, cx, y)
+
         story = []
 
         # 🔲 페이지마다 보더라인 그리기용 콜백
@@ -730,8 +749,8 @@ if REPORTLAB_AVAILABLE:
 
             # ----- 제목 -----
             story.append(Paragraph("부자재반입", title_style))
-            # 공백 2줄 정도
-            story.append(Spacer(1, bold_text_style.leading * 2))
+            # 공백 4줄 정도
+            story.append(Spacer(1, bold_text_style.leading * 4))
 
             # ----- 굵은 텍스트 필드 (사이사이 1줄 공백) -----
             bold_lines = [
@@ -748,9 +767,9 @@ if REPORTLAB_AVAILABLE:
 
             story.append(Spacer(1, 8))
 
-            # 🔥 바코드 생성 (너비 90px 기준)
+            # 🔥 바코드 생성 (전체 너비 약 90px 기준)
             bar_width_px = 90
-            bar_width_pt = bar_width_px * 0.75
+            bar_width_pt = bar_width_px * 0.75  # px → pt
             char_count = max(len(barcode_value), 1)
             bar_width = bar_width_pt / char_count
 
@@ -767,6 +786,8 @@ if REPORTLAB_AVAILABLE:
             story.append(center_bc)
             story.append(Spacer(1, 5))
 
+            # 바코드 값 텍스트 (중앙정렬)
+            story.append(Paragraph(barcode_value, barcode_text_style))
 
             # 여러 장일 경우 다음 페이지
             if idx != len(df_labels) - 1:
