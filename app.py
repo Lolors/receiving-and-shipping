@@ -1516,6 +1516,38 @@ if menu == "↩️ 환입 관리":
         df_visible = df_full[[c for c in VISIBLE_COLS if c in df_full.columns]].copy()
         st.dataframe(df_visible, use_container_width=True)
 
+         label_source_cols = ["품번", "품명", "단위수량", "환입일"]
+        if all(col in df_full.columns for col in label_source_cols):
+            st.markdown("#### 🏷 라벨 출력용 자재 선택")
+
+            label_df = df_full[label_source_cols].copy()
+            # 표시용: 선택 컬럼 맨 앞에 추가
+            label_df.insert(0, "선택", False)
+
+            label_df = st.data_editor(
+                label_df,
+                use_container_width=True,
+                num_rows="dynamic",
+                key="label_editor",
+            )
+
+            if st.button("🏷 선택한 자재 라벨 PDF 만들기", key="btn_make_labels"):
+                selected_labels = label_df[label_df["선택"] == True].copy()
+
+                if selected_labels.empty:
+                    st.warning("라벨을 출력할 행을 하나 이상 선택하세요.")
+                else:
+                    try:
+                        pdf_labels = generate_label_pdf(selected_labels)
+                        st.download_button(
+                            "📄 부자재반입 라벨 PDF 다운로드",
+                            data=pdf_labels,
+                            file_name="부자재_반입라벨.pdf",
+                            mime="application/pdf",
+                        )
+                    except Exception as e:
+                        st.error(f"라벨 PDF 생성 중 오류: {e}")       
+
         # ---------- 품번별 수주번호 선택 (CSV 통합용) ----------
         merge_choices = {}
         work = df_full.copy()
