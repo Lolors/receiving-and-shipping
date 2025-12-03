@@ -579,23 +579,33 @@ if REPORTLAB_AVAILABLE:
             except Exception:
                 pass
 
-        # 표 구성
-        table_cols = ["품번", "품명", "작불", "예상재고", "ERP재고"]
+        # 표 구성: 기존 + 1P, 2P, 3P, 4P 4칸 추가
+        base_cols = ["품번", "품명", "작불", "예상재고", "ERP재고"]
+        table_cols = base_cols + ["1P", "2P", "3P", "4P"]
         table_data = [table_cols]
 
         for _, row in df_export.iterrows():
-                table_data.append([str(row.get(c, "")) for c in table_cols])
+                # df_export 에는 1P~4P 컬럼이 없으니까, 기존 데이터만 넣고 4칸은 공백으로 채움
+                base_values = [str(row.get(c, "")) for c in base_cols]
+                extra_values = ["", "", "", ""]  # 1P, 2P, 3P, 4P
+                table_data.append(base_values + extra_values)
 
-        # 🔥 행 높이 조절 (헤더만 기본, 데이터 행만 5배)
-        default_height = None        # 헤더는 ReportLab 기본 높이 사용
-        data_height = 40             # 데이터 행만 크게(5배)
+        # 🔥 행 높이 (헤더는 기본, 데이터 행만 높게)
+        default_height = None        # 헤더
+        data_height = 40             # 데이터 행
         row_heights = [default_height] + [data_height] * (len(table_data) - 1)
+
+        # 🔥 컬럼 폭 설정
+        #  - 앞의 5개 컬럼은 None(자동)
+        #  - 1P~4P 4칸만 넓게(예: 80pt씩) → 필요하면 숫자 키워서 조절
+        col_widths = [None, None, None, None, None, 80, 80, 80, 80]
 
         table = Table(
                 table_data,
                 repeatRows=1,
                 rowHeights=row_heights,
-                hAlign="LEFT",          # 표 자체 왼쪽 정렬
+                colWidths=col_widths,
+                hAlign="LEFT",   # 표 전체 왼쪽 정렬
         )
 
         table.setStyle(
@@ -611,8 +621,8 @@ if REPORTLAB_AVAILABLE:
                                 ("LEFTPADDING", (0, 0), (-1, -1), 0),
                                 ("RIGHTPADDING", (0, 0), (-1, -1), 4),
 
-                                # 데이터 행만 여백 크게(헤더는 기본값 유지)
-                                ("TOPPADDING", (0, 1), (-1, -1), 12),
+                                # 데이터 행만 위/아래 여백 크게
+                                ("TOPPADDING",    (0, 1), (-1, -1), 12),
                                 ("BOTTOMPADDING", (0, 1), (-1, -1), 12),
                         ]
                 )
