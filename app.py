@@ -1835,25 +1835,22 @@ if menu == "↩️ 환입 관리":
         st.write("환입 데이터 불러오기를 실행하면 이곳에 결과가 표시됩니다.")
     else:
         # -------------------------------------------------
-        # 0) 컬럼들 기본 세팅 (없으면 생성)
+        # 0) 컬럼 기본 세팅
+        #    👉 입고시작일 / 입고종료일은 더 이상 사용 안 함
         # -------------------------------------------------
-        col_defaults = {
-            "입고시작일": None,
-            "입고종료일": None,
-            "추가수주": "",
-            "라벨선택": False,
-        }
-        for col, default in col_defaults.items():
-            if col not in df_full.columns:
-                df_full[col] = default
+        if "추가수주" not in df_full.columns:
+            df_full["추가수주"] = ""
+        if "라벨선택" not in df_full.columns:
+            df_full["라벨선택"] = False
 
         # -------------------------------------------------
-        # 1) 추가수주 자동 채우기용 입고기간 선택 (전체 공통)
+        # 1) 공통부자재 추가수주 자동생성용 입고기간 (전체 공통)
+        #    👉 화면에는 date_input만 있고, 행별 입고시작일/종료일 컬럼은 없음
         # -------------------------------------------------
         today = date.today()
         default_start = today - timedelta(days=30)
         date_range = st.date_input(
-            "추가수주 자동생성용 입고기간 선택",
+            "공통부자재 추가수주 자동생성용 입고기간 선택",
             (default_start, today),
             key="extra_order_range",
         )
@@ -1863,25 +1860,31 @@ if menu == "↩️ 환입 관리":
             start_date = end_date = date_range
 
         # -------------------------------------------------
-        # 2) 화면용 에디터: 라벨선택 + 기본 컬럼 + 입고기간 + 추가수주
+        # 2) 화면용 에디터: VISIBLE_COLS + 추가수주(수주번호 바로 뒤) + 라벨선택(맨 뒤)
         # -------------------------------------------------
-        base_cols = [c for c in VISIBLE_COLS if c in df_full.columns]
-        extra_cols = ["입고시작일", "입고종료일", "추가수주"]
-        for c in extra_cols:
-            if c not in base_cols:
-                base_cols.append(c)
+        # 기본 컬럼(수주번호, 품번, ERP불출수량, 예상재고 등)
+        display_cols = [c for c in VISIBLE_COLS if c in df_full.columns]
 
-        df_visible = df_full[base_cols].copy()
+        # 🔹 추가수주를 수주번호 바로 뒤에 끼워 넣기
+        if "추가수주" in df_full.columns:
+            if "추가수주" in display_cols:
+                display_cols.remove("추가수주")
+            if "수주번호" in display_cols:
+                idx = display_cols.index("수주번호") + 1
+            else:
+                idx = 0
+            display_cols.insert(idx, "추가수주")
 
-        # 라벨선택 컬럼을 맨 앞에
+        # 화면용 DataFrame
+        df_visible = df_full[display_cols].copy()
+
+        # 🔹 라벨선택은 맨 마지막 컬럼
         if "라벨선택" in df_full.columns:
-            df_visible.insert(
-                0,
-                "라벨선택",
-                df_full["라벨선택"].fillna(False),
-            )
-        else:
-            df_visible.insert(0, "라벨선택", False)
+            df_visible["라벨선택"] = df_full["라벨선택"].fillna(False)
+            # 혹시 중간에 들어갔을 수도 있으니 pop 후 다시 맨 뒤에 붙이기
+            if "라벨선택" in df_visible.columns:
+                label_col = df_visible.pop("라벨선택")
+                df_visible["라벨선택"] = label_col
 
         df_edit = st.data_editor(
             df_visible,
@@ -1890,56 +1893,13 @@ if menu == "↩️ 환입 관리":
             key="return_editor",
         )
 
-        # 에디터에서 수정된 값들 df_full에 반영
-        for col in ["라벨선택", "입고시작일", "입고종료일", "추가수주"]:
+        # 에디터에서 수정된 값들 df_full에 반영 (추가수주 / 라벨선택)
+        for col in ["추가수주", "라벨선택"]:
             if col in df_edit.columns:
                 df_full.loc[df_edit.index, col] = df_edit[col]
 
         # -------------------------------------------------
-        # 3) 입고기간이 입력된 행은 '기간 + 품번' 기준으로 실물입고 재계산
-        #    -> get_real_in_by_period(part_code, start_date, end_date) 필요
-        # -------------------------------------------------
-        def apply_real_in_by_period(row):
-            part = row.get("품번", None)
-            start = row.get("입고시작일", None)
-            end = row.get("입고종료일", None)
-
-            if part is None or pd.isna(part) or pd.isna(start) or pd.isna(end):
-                return row
-
-            try:
-                s = pd.to_datetime(start).date()
-                e = pd.to_datetime(end).date()
-            except Exception:
-                return row
-
-            # 기간 기준 실물입고 합계
-            real_in = get_real_in_by_period(str(part), s, e)
-
-            # 기존 생산/샘플/불량/단위수량은 유지, 실물입고/예상재고만 재계산
-            row["현장실물입고"] = real_in
-
-            prod = safe_num(row.get("생산수량", 0))
-            qc   = safe_num(row.get("QC샘플", 0))
-            etc  = safe_num(row.get("기타샘플", 0))
-            orig = safe_num(row.get("원불", 0))
-            proc = safe_num(row.get("작불", 0))
-            unit = safe_num(row.get("단위수량", 0))
-
-            row["예상재고"] = (
-                real_in
-                - (prod + qc + etc) * unit
-                - orig
-                - proc
-            )
-
-            return row
-
-        df_full = df_full.apply(apply_real_in_by_period, axis=1)
-
-        # -------------------------------------------------
-        # 4) 버튼: 입고기간 기준으로 추가수주 자동 채우기
-        #    -> get_extra_orders_by_period(part_code, base_suju, start_date, end_date) 필요
+        # 3) 버튼: 입고기간 기준으로 추가수주 자동 채우기
         # -------------------------------------------------
         if st.button("🔄 입고기간 기준으로 추가수주 자동 채우기", key="btn_auto_extra_orders"):
             for idx, row in df_full.iterrows():
@@ -1972,7 +1932,7 @@ if menu == "↩️ 환입 관리":
             st.success("입고기간 기준으로 추가수주 번호를 자동으로 채웠습니다.")
 
         # -------------------------------------------------
-        # 5) 공통부자재: 기본수주 + 추가수주까지 포함해서 재계산
+        # 4) 공통부자재: 기본수주 + 추가수주까지 포함해서 재계산
         # -------------------------------------------------
         aggs = st.session_state.get("aggregates", None)
 
@@ -2062,14 +2022,33 @@ if menu == "↩️ 환입 관리":
         # 최종 df_full을 세션에 저장
         st.session_state["환입재고예상"] = df_full
 
-        # 보기용 테이블 한 번 더
+        # -------------------------------------------------
+        # 5) 계산 결과 보기용 표 (추가수주 수주번호 뒤, 라벨선택 맨 뒤)
+        # -------------------------------------------------
         visible_cols = [c for c in VISIBLE_COLS if c in df_full.columns]
+
+        # 추가수주 수주번호 뒤로
+        if "추가수주" in df_full.columns:
+            if "추가수주" in visible_cols:
+                visible_cols.remove("추가수주")
+            if "수주번호" in visible_cols:
+                idx = visible_cols.index("수주번호") + 1
+            else:
+                idx = 0
+            visible_cols.insert(idx, "추가수주")
+
+        # 보기용에도 라벨선택을 맨 뒤에 붙여서 보여줄지 여부
+        if "라벨선택" in df_full.columns:
+            visible_cols = visible_cols + ["라벨선택"]
+
         st.markdown("#### 계산 결과 (보기용)")
         st.dataframe(df_full[visible_cols], use_container_width=True)
+
 
         # ----------------------------------------------------
         # 🔽 여기부터는 기존 CSV / PDF / 라벨 로직 (df_full 기반)
         # ----------------------------------------------------
+        
         # ---------- 품번별 수주번호 선택 (CSV 통합용) ----------
         merge_choices = {}
         work = df_full.copy()
