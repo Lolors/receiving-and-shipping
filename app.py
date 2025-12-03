@@ -643,20 +643,20 @@ if REPORTLAB_AVAILABLE:
     def generate_label_pdf(df_labels: pd.DataFrame, barcode_value: str, unit_value: str) -> bytes:
         """
         df_labels: '품명', '품번', '환입일' 컬럼을 가진 DataFrame
-        barcode_value: 사용자가 입력한 부자재반입요청번호 (예: B202511-00120001)
-        unit_value: 사용자가 직접 입력한 단위수량 텍스트
-        1행당 라벨 1장 (100mm x 120mm)
+        barcode_value: 사용자가 입력한 바코드 값 (예: B202511-00120001)
+        unit_value: 사용자가 입력한 단위수량
         """
         import io
         from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.enums import TA_CENTER, TA_LEFT
         from reportlab.lib.units import mm
         from reportlab.graphics.barcode import code128
         from xml.sax.saxutils import escape
 
         buffer = io.BytesIO()
 
-        # 페이지 크기: 100mm x 120mm
+        # 라벨 크기: 100mm * 120mm
         LABEL_WIDTH = 100 * mm
         LABEL_HEIGHT = 120 * mm
 
@@ -670,29 +670,56 @@ if REPORTLAB_AVAILABLE:
         )
 
         styles = getSampleStyleSheet()
+
+        # 제목 스타일 (25pt, 중앙정렬)
         title_style = ParagraphStyle(
             "LabelTitle",
             parent=styles["Heading1"],
             fontName=KOREAN_FONT_NAME,
-            fontSize=18,
-            alignment=1,  # CENTER
+            fontSize=25,
+            alignment=TA_CENTER,
         )
-        text_style = ParagraphStyle(
-            "LabelText",
+
+        # 굵은 텍스트 스타일 (품명/품목코드/단위수량/반입일자)
+        bold_text_style = ParagraphStyle(
+            "BoldText",
             parent=styles["Normal"],
             fontName=KOREAN_FONT_NAME,
-            fontSize=11,
-            leading=14,
-            alignment=0,  # LEFT
+            fontSize=13,
+            leading=16,
+            alignment=TA_LEFT,
+        )
+
+        # 바코드 하단 텍스트 스타일 (중앙정렬)
+        barcode_text_style = ParagraphStyle(
+            "BarcodeText",
+            parent=styles["Normal"],
+            fontName=KOREAN_FONT_NAME,
+            fontSize=12,
+            alignment=TA_CENTER,
         )
 
         story = []
+
+        # 🔲 페이지마다 보더라인 그리기용 콜백
+        def draw_border(canvas, doc_obj):
+            canvas.saveState()
+            # 3px ≈ 0.8mm 정도 안쪽으로
+            inset = 0.8 * mm
+            x = inset
+            y = inset
+            w = LABEL_WIDTH - 2 * inset
+            h = LABEL_HEIGHT - 2 * inset
+            canvas.setLineWidth(0.75)  # ≈ 1px
+            canvas.rect(x, y, w, h)
+            canvas.restoreState()
 
         for idx, row in df_labels.iterrows():
             품명 = str(row.get("품명", ""))
             품번 = str(row.get("품번", ""))
             환입일 = row.get("환입일", "")
 
+            # 환입일 정리
             try:
                 if pd.notna(환입일):
                     환입일_str = pd.to_datetime(환입일).strftime("%Y-%m-%d")
@@ -701,42 +728,56 @@ if REPORTLAB_AVAILABLE:
             except Exception:
                 환입일_str = str(환입일)
 
-            # ----- 라벨 한 장 -----
+            # ----- 제목 -----
             story.append(Paragraph("부자재반입", title_style))
-            story.append(Spacer(1, 10))
+            # 공백 4줄 정도
+            story.append(Spacer(1, bold_text_style.leading * 4))
 
-            lines = [
-                f"품명      {escape(품명)}",
-                f"품목코드  {escape(품번)}",
-                f"단위수량  {escape(unit_value)}",     # ← 사용자 입력값 반영
-                f"반입일자  {escape(환입일_str)}",
+            # ----- 굵은 텍스트 필드 (사이사이 1줄 공백) -----
+            bold_lines = [
+                f"<b>품명</b>       {escape(품명)}",
+                f"<b>품목코드</b>  {escape(품번)}",
+                f"<b>단위수량</b>   {escape(unit_value)}",
+                f"<b>반입일자</b>   {escape(환입일_str)}",
             ]
-            for line in lines:
-                story.append(Paragraph(line, text_style))
-                story.append(Spacer(1, 4))
 
-            story.append(Spacer(1, 12))
-
-            # 🔥 바코드 — 라벨 폭에 맞게 최대 너비로 늘림
-            # barWidth는 라벨 전체 폭(mm)을 문자수로 나눈 값  
-            target_width_mm = 90  # 좌우 여백 고려 후 최대 약 90mm
-            char_count = max(len(barcode_value), 1)
-            bar_width = (target_width_mm / char_count) * 0.5  # 적절한 비율
-
-            bc = code128.Code128(barcode_value, barHeight=30 * mm, barWidth=bar_width)
-            story.append(bc)
+            for line in bold_lines:
+                story.append(Paragraph(line, bold_text_style))
+                # 공백 1줄
+                story.append(Spacer(1, bold_text_style.leading))
 
             story.append(Spacer(1, 8))
-            story.append(Paragraph(barcode_value, text_style))
 
-            # 여러 개일 경우 다음 페이지
+            # 🔥 바코드 생성 (너비 90px 기준, 중앙 정렬)
+            bar_width_px = 90
+            bar_width_pt = bar_width_px * 0.75  # px → pt
+            char_count = max(len(barcode_value), 1)
+            bar_width = bar_width_pt / char_count  # 대략 전체 폭이 90px 정도 되도록
+
+            bc = code128.Code128(
+                barcode_value,
+                barHeight=25 * mm,
+                barWidth=bar_width,
+            )
+
+            # 바코드 중앙정렬 느낌을 위해 위/아래 여유
+            story.append(Spacer(1, 5))
+            story.append(bc)
+            story.append(Spacer(1, 5))
+
+            # 바코드 값 텍스트 (중앙 정렬)
+            story.append(Paragraph(barcode_value, barcode_text_style))
+
+            # 여러 장일 경우 다음 페이지
             if idx != len(df_labels) - 1:
                 story.append(PageBreak())
 
-        doc.build(story)
+        # 보더라인 콜백 적용
+        doc.build(story, onFirstPage=draw_border, onLaterPages=draw_border)
         pdf_bytes = buffer.getvalue()
         buffer.close()
         return pdf_bytes
+
 
 else:
     def generate_pdf(*args, **kwargs):
