@@ -1743,34 +1743,35 @@ if menu == "↩️ 환입 관리":
     if df_full.empty:
         st.write("환입 데이터 불러오기를 실행하면 이곳에 결과가 표시됩니다.")
     else:
-        # 🔹 1) 공통부자재용 '추가수주' 컬럼이 없으면 추가 (문자열로)
+        # =====================================================
+        # 1) 입력용 에디터: 라벨선택 + 추가수주
+        # =====================================================
         if "추가수주" not in df_full.columns:
             df_full["추가수주"] = ""
+        if "라벨선택" not in df_full.columns:
+            df_full["라벨선택"] = False
 
-        # 화면용: 계산된 df_full 그대로 VISIBLE_COLS + 추가수주 컬럼까지 보여주기
-        base_cols = [c for c in VISIBLE_COLS if c in df_full.columns]
-        if "추가수주" not in base_cols:
-            base_cols.append("추가수주")
+        input_cols = ["라벨선택", "품번", "품명", "추가수주"]
+        input_cols = [c for c in input_cols if c in df_full.columns]
 
-        df_visible = df_full[base_cols].copy()
+        df_input = df_full[input_cols].copy()
 
-        # 🔹 이 표에 바로 라벨 선택 컬럼 추가
-        if "라벨선택" not in df_visible.columns:
-            df_visible.insert(0, "라벨선택", False)
-
-        # 🔹 data_editor로 사용자 입력 받기
-        df_visible_edit = st.data_editor(
-            df_visible,
+        df_input_edit = st.data_editor(
+            df_input,
             use_container_width=True,
-            num_rows="dynamic",
-            key="return_visible_editor",
+            num_rows="fixed",
+            key="return_input_editor",   # 🔑 기존 key와 다르게 (중복 방지)
         )
 
-        # 🔹 사용자가 입력한 '추가수주'를 df_full에 반영
-        if "추가수주" in df_visible_edit.columns:
-            df_full.loc[df_visible_edit.index, "추가수주"] = df_visible_edit["추가수주"]
+        # 사용자가 수정한 라벨선택 / 추가수주를 df_full에 반영
+        if "라벨선택" in df_input_edit.columns:
+            df_full.loc[df_input_edit.index, "라벨선택"] = df_input_edit["라벨선택"]
+        if "추가수주" in df_input_edit.columns:
+            df_full.loc[df_input_edit.index, "추가수주"] = df_input_edit["추가수주"]
 
-        # 🔹 6) 공통부자재용: 추가수주까지 합산해서 재계산
+        # =====================================================
+        # 2) 공통부자재: 추가수주까지 포함해서 재계산
+        # =====================================================
         aggs = st.session_state.get("aggregates", None)
 
         if aggs is None:
@@ -1855,11 +1856,17 @@ if menu == "↩️ 환입 관리":
             # 🔥 df_full 전체에 대해 재계산 적용
             df_full = df_full.apply(recompute_row_with_extra_orders, axis=1)
 
-        # 🔹 7) 재계산된 df_full을 다시 session_state에 저장
+        # 🔹 재계산된 df_full을 다시 session_state에 저장
         st.session_state["환입재고예상"] = df_full
 
+        # 💡 보기 좋게 계산 결과 한 번 보여주기 (선택사항)
+        visible_cols = [c for c in VISIBLE_COLS if c in df_full.columns]
+        df_visible = df_full[visible_cols].copy()
+        st.markdown("#### 계산 결과 (보기용)")
+        st.dataframe(df_visible, use_container_width=True)
+
         # ----------------------------------------------------
-        # 🔽 여기서부터는 기존 CSV / PDF / 라벨 로직 그대로 이어짐
+        # 🔽 여기서부터는 기존 CSV / PDF / 라벨 로직 그대로 (df_full 기반)
         # ----------------------------------------------------
         # ---------- 품번별 수주번호 선택 (CSV 통합용) ----------
         merge_choices = {}
@@ -2092,15 +2099,14 @@ if menu == "↩️ 환입 관리":
             download_disabled = True
             download_help = ""
 
-            # 라벨선택 / 품번 컬럼 체크 (여기서는 df_visible_edit 이미 정의됨)
-            if "라벨선택" not in df_visible_edit.columns:
+            # 🔹 df_full 기준으로 라벨선택 자재 가져오기
+            if "라벨선택" not in df_full.columns:
                 st.error("라벨선택 컬럼을 찾을 수 없습니다.")
-            elif "품번" not in df_visible_edit.columns:
+            elif "품번" not in df_full.columns:
                 st.error("품번 컬럼이 없어 라벨 데이터를 만들 수 없습니다.")
             else:
-                selected_mask = df_visible_edit["라벨선택"] == True
                 selected_parts = (
-                    df_visible_edit.loc[selected_mask, "품번"]
+                    df_full.loc[df_full["라벨선택"] == True, "품번"]
                     .astype(str)
                     .tolist()
                 )
@@ -2145,7 +2151,6 @@ if menu == "↩️ 환입 관리":
                 disabled=download_disabled,
                 key="btn_make_labels",
             )
-
 
 # ============================================================
 # 🧩 5. 공통자재 탭
