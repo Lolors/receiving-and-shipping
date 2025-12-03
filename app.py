@@ -556,8 +556,10 @@ if REPORTLAB_AVAILABLE:
         story.append(Spacer(1, 12))
 
         # 붙여넣은 텍스트가 있으면 제목 아래에 출력
-        if pasted_text:
-            story.append(Paragraph(pasted_text.replace("\n", "<br/>"), text_style))
+        if pasted_text is not None and pasted_text.strip() != "":
+            safe_text = escape(pasted_text)          # <, >, & 등 이스케이프
+            safe_text = safe_text.replace("\n", "<br/>")
+            story.append(Paragraph(safe_text, text_style))
             story.append(Spacer(1, 12))
 
         # 클립보드 이미지가 있을 경우 PDF 삽입
@@ -1326,6 +1328,15 @@ if menu == "↩️ 환입 관리":
             if selected_rows.empty:
                 st.warning("선택된 자재가 없습니다. 최소 1개 선택해주세요.")
             else:
+                # 🔥 현재 수주번호 + 지시번호에 해당하는 기존 행은 먼저 삭제
+                df_return = df_return[
+                    ~(
+                        (df_return["수주번호"] == suju_no)
+                        & (df_return["지시번호"] == selected_jisi)
+                    )
+                ].copy()
+
+                # 선택된 자재만 새로 추가
                 new_rows = []
                 for _, row in selected_rows.iterrows():
                     part = row["품번"]
