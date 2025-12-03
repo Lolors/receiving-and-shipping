@@ -748,25 +748,25 @@ if REPORTLAB_AVAILABLE:
 
             story.append(Spacer(1, 8))
 
-            # 🔥 바코드 생성 (너비 40px 기준, 중앙 정렬)
-            bar_width_px = 40
-            bar_width_pt = bar_width_px * 0.75  # px → pt
+            # 🔥 바코드 생성 (너비 90px 기준)
+            bar_width_px = 90
+            bar_width_pt = bar_width_px * 0.75
             char_count = max(len(barcode_value), 1)
             bar_width = bar_width_pt / char_count
 
             bc = code128.Code128(
                 barcode_value,
-                barHeight=20 * mm,
+                barHeight=25 * mm,
                 barWidth=bar_width,
             )
 
-            # 바코드 중앙정렬 느낌을 위해 위/아래 여유
+            # 중앙정렬 Flowable로 감싸기
+            center_bc = CenteredBarcode(bc)
+
             story.append(Spacer(1, 5))
-            story.append(bc)
+            story.append(center_bc)
             story.append(Spacer(1, 5))
 
-            # 바코드 값 텍스트 (중앙 정렬)
-            story.append(Paragraph(barcode_value, barcode_text_style))
 
             # 여러 장일 경우 다음 페이지
             if idx != len(df_labels) - 1:
