@@ -536,11 +536,14 @@ if REPORTLAB_AVAILABLE:
                 ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
                 ("ALIGN", (0, 0), (-1, -1), "LEFT"),
 
-                ("LEFTPADDING", (0, 0), (-1, -1), 0),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 2),
+                ("ROWHEIGHT", (0, 0), (-1, -1), 16),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
 
-                # 🔥 행 높이 3배 키우기
-                ("ROWHEIGHT", (0, 0), (-1, -1), 20),
+                # 🔥 행간(행 높이) 3배 키우기
+                ("ROWHEIGHT", (0, 0), (-1, -1), 18),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+
                 
                 ("FONTNAME", (0, 0), (-1, -1), KOREAN_FONT_NAME),
                 ("FONTSIZE", (0, 0), (-1, -1), 8),
