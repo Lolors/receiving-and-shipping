@@ -940,7 +940,7 @@ if menu == "📦 입고 조회":
         default_start = today - timedelta(days=1)
 
         # 날짜 선택 + 품명 검색을 같은 줄(col) 에 배치
-        col_date, col_name = st.columns([2, 1])
+        col_date, col_name = st.columns([1, 2])
 
         with col_date:
             date_range = st.date_input(
