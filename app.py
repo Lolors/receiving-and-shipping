@@ -1724,68 +1724,6 @@ if menu == "↩️ 환입 관리":
             key="barcode_input",
         )
 
-        # 🔸 라벨용 단위수량 입력
-        unit_value = st.text_input(
-            "단위수량 입력 (라벨에 표시될 값)",
-            key="unit_input",
-        )
-
-        # 🔸 라벨 PDF 바로 다운로드 (st.button → st.download_button)
-        pdf_labels = None
-        download_disabled = True
-        download_help = ""
-
-        # 라벨선택 컬럼/품번 컬럼 체크
-        if "라벨선택" not in df_visible_edit.columns:
-            st.error("라벨선택 컬럼을 찾을 수 없습니다.")
-        elif "품번" not in df_visible_edit.columns:
-            st.error("품번 컬럼이 없어 라벨 데이터를 만들 수 없습니다.")
-        else:
-            selected_mask = df_visible_edit["라벨선택"] == True
-            selected_parts = (
-                df_visible_edit.loc[selected_mask, "품번"]
-                .astype(str)
-                .tolist()
-            )
-
-            required_cols = ["품명", "품번", "환입일"]
-            if not all(col in df_full.columns for col in required_cols):
-                st.error("라벨 생성에 필요한 컬럼(품명, 품번, 환입일)이 부족합니다.")
-            else:
-                if not barcode_value:
-                    download_help = "부자재반입요청번호를 입력하면 버튼이 활성화됩니다."
-                elif not unit_value:
-                    download_help = "단위수량을 입력하면 버튼이 활성화됩니다."
-                elif not selected_parts:
-                    download_help = "라벨을 출력할 자재를 한 개 이상 선택하세요."
-                else:
-                    df_labels = df_full[
-                        df_full["품번"].astype(str).isin(selected_parts)
-                    ][required_cols].copy()
-
-                    if df_labels.empty:
-                        download_help = "선택한 자재에서 라벨에 사용할 데이터를 찾지 못했습니다."
-                    else:
-                        try:
-                            pdf_labels = generate_label_pdf(df_labels, barcode_value, unit_value)
-                            download_disabled = False
-                        except Exception as e:
-                            st.error(f"라벨 PDF 생성 중 오류: {e}")
-                            download_help = "라벨 PDF 생성 중 오류가 발생했습니다."
-
-        if download_help:
-            st.caption(download_help)
-
-        st.download_button(
-            "🏷 선택한 자재 바코드 라벨 PDF 만들기",
-            data=pdf_labels if pdf_labels is not None else b"",
-            file_name="부자재반입라벨.pdf",
-            mime="application/pdf",
-            disabled=download_disabled,
-            key="btn_make_labels",
-        )
-
-
         # ---------- 품번별 수주번호 선택 (CSV 통합용) ----------
         merge_choices = {}
         work = df_full.copy()
@@ -1977,6 +1915,68 @@ if menu == "↩️ 환입 관리":
                         st.markdown(
                             f"- **{row['품번']} / {row['품명']}** : {row['비고2']}"
                         )
+
+        # 🔸 라벨용 단위수량 입력
+        unit_value = st.text_input(
+            "단위수량 입력 (라벨에 표시될 값)",
+            key="unit_input",
+        )
+
+        # 🔸 라벨 PDF 바로 다운로드 (st.button → st.download_button)
+        pdf_labels = None
+        download_disabled = True
+        download_help = ""
+
+        # 라벨선택 컬럼/품번 컬럼 체크
+        if "라벨선택" not in df_visible_edit.columns:
+            st.error("라벨선택 컬럼을 찾을 수 없습니다.")
+        elif "품번" not in df_visible_edit.columns:
+            st.error("품번 컬럼이 없어 라벨 데이터를 만들 수 없습니다.")
+        else:
+            selected_mask = df_visible_edit["라벨선택"] == True
+            selected_parts = (
+                df_visible_edit.loc[selected_mask, "품번"]
+                .astype(str)
+                .tolist()
+            )
+
+            required_cols = ["품명", "품번", "환입일"]
+            if not all(col in df_full.columns for col in required_cols):
+                st.error("라벨 생성에 필요한 컬럼(품명, 품번, 환입일)이 부족합니다.")
+            else:
+                if not barcode_value:
+                    download_help = "부자재반입요청번호를 입력하면 버튼이 활성화됩니다."
+                elif not unit_value:
+                    download_help = "단위수량을 입력하면 버튼이 활성화됩니다."
+                elif not selected_parts:
+                    download_help = "라벨을 출력할 자재를 한 개 이상 선택하세요."
+                else:
+                    df_labels = df_full[
+                        df_full["품번"].astype(str).isin(selected_parts)
+                    ][required_cols].copy()
+
+                    if df_labels.empty:
+                        download_help = "선택한 자재에서 라벨에 사용할 데이터를 찾지 못했습니다."
+                    else:
+                        try:
+                            pdf_labels = generate_label_pdf(df_labels, barcode_value, unit_value)
+                            download_disabled = False
+                        except Exception as e:
+                            st.error(f"라벨 PDF 생성 중 오류: {e}")
+                            download_help = "라벨 PDF 생성 중 오류가 발생했습니다."
+
+        if download_help:
+            st.caption(download_help)
+
+        st.download_button(
+            "🏷 선택한 자재 바코드 라벨 PDF 만들기",
+            data=pdf_labels if pdf_labels is not None else b"",
+            file_name="부자재반입라벨.pdf",
+            mime="application/pdf",
+            disabled=download_disabled,
+            key="btn_make_labels",
+        )
+
 
 # ============================================================
 # 🧩 5. 공통자재 탭
