@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import date, timedelta
 import io
 import os
+from html import escape
 
 # ============ S3 연동 ============
 
@@ -486,11 +487,6 @@ if REPORTLAB_AVAILABLE:
         uploaded_image=None,
         pasted_text=None
     ) -> bytes:
-        """
-        - 제목 / 표 모두 왼쪽 정렬
-        - 붙여넣은 텍스트가 있으면 제목 아래에 출력
-        - 붙여넣은 이미지(base64) 있으면 그 아래에 출력
-        """
         import io
         from reportlab.platypus import (
             SimpleDocTemplate,
@@ -538,7 +534,7 @@ if REPORTLAB_AVAILABLE:
             [
                 ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
                 ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
-                ("ALIGN", (0, 0), (-1, -1), "LEFT"),  # 왼쪽 정렬
+                ("ALIGN", (0, 0), (-1, -1), "LEFT"),
                 ("FONTNAME", (0, 0), (-1, -1), KOREAN_FONT_NAME),
                 ("FONTSIZE", (0, 0), (-1, -1), 8),
                 ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
@@ -547,7 +543,7 @@ if REPORTLAB_AVAILABLE:
 
         story = []
 
-        # 제목 구성
+        # 제목
         suju_list = df_export["수주번호"].dropna().astype(str).unique()
         name_list = df_export["완성품명"].dropna().astype(str).unique()
         title_text = f"{suju_list[0] if len(suju_list) else ''} {name_list[0] if len(name_list) else ''}".strip()
@@ -555,12 +551,15 @@ if REPORTLAB_AVAILABLE:
         story.append(Paragraph(title_text, title_style))
         story.append(Spacer(1, 12))
 
-        # 붙여넣은 텍스트가 있으면 제목 아래에 출력
+        # 🔹 붙여넣은 텍스트가 있으면 제목 아래에 출력
         if pasted_text:
-            story.append(Paragraph(pasted_text.replace("\n", "<br/>"), text_style))
+            # &, <, > 같은 것들 HTML 이스케이프 후 줄바꿈 처리
+            safe_text = escape(pasted_text)
+            safe_text = safe_text.replace("\n", "<br/>")
+            story.append(Paragraph(safe_text, text_style))
             story.append(Spacer(1, 12))
 
-        # 클립보드 이미지가 있을 경우 PDF 삽입
+        # (이미지 필요하면 이 부분 사용)
         if uploaded_image:
             try:
                 img = Image(uploaded_image, width=400, height=300)
@@ -569,7 +568,7 @@ if REPORTLAB_AVAILABLE:
             except Exception:
                 pass
 
-        # 표 구성
+        # 표
         table_cols = ["품번", "품명", "작불", "예상재고", "ERP재고"]
         table_data = [table_cols]
 
@@ -582,7 +581,6 @@ if REPORTLAB_AVAILABLE:
 
         doc.build(story)
 
-        # 그냥 reportlab이 만든 raw PDF bytes 그대로 반환 (따로 ANSI 재인코딩 X)
         pdf_bytes = buffer.getvalue()
         buffer.close()
         return pdf_bytes
@@ -1326,6 +1324,15 @@ if menu == "↩️ 환입 관리":
             if selected_rows.empty:
                 st.warning("선택된 자재가 없습니다. 최소 1개 선택해주세요.")
             else:
+                # 🔥 현재 수주번호 + 지시번호에 해당하는 기존 행은 먼저 삭제
+                df_return = df_return[
+                    ~(
+                        (df_return["수주번호"] == suju_no)
+                        & (df_return["지시번호"] == selected_jisi)
+                    )
+                ].copy()
+
+                # 선택된 자재만 새로 추가
                 new_rows = []
                 for _, row in selected_rows.iterrows():
                     part = row["품번"]
