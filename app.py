@@ -586,15 +586,16 @@ if REPORTLAB_AVAILABLE:
         for _, row in df_export.iterrows():
                 table_data.append([str(row.get(c, "")) for c in table_cols])
 
-        # 🔥 행 높이 강제 적용 (5배)
-        row_height = 50
-        row_heights = [row_height] * len(table_data)
+        # 🔥 행 높이 조절 (헤더만 기본, 데이터 행만 5배)
+        default_height = None        # 헤더는 ReportLab 기본 높이 사용
+        data_height = 40             # 데이터 행만 크게(5배)
+        row_heights = [default_height] + [data_height] * (len(table_data) - 1)
 
         table = Table(
                 table_data,
                 repeatRows=1,
                 rowHeights=row_heights,
-                hAlign="LEFT",          # ← 표 자체를 왼쪽 정렬
+                hAlign="LEFT",          # 표 자체 왼쪽 정렬
         )
 
         table.setStyle(
@@ -602,20 +603,21 @@ if REPORTLAB_AVAILABLE:
                         [
                                 ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
                                 ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
-                                ("ALIGN", (0, 0), (-1, -1), "LEFT"),  # 셀 내부 왼쪽정렬
+                                ("ALIGN", (0, 0), (-1, -1), "LEFT"),
                                 ("FONTNAME", (0, 0), (-1, -1), KOREAN_FONT_NAME),
                                 ("FONTSIZE", (0, 0), (-1, -1), 8),
                                 ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
 
-                                ("LEFTPADDING", (0, 0), (-1, -1), 0),   # ← 표 왼쪽여백 0
+                                ("LEFTPADDING", (0, 0), (-1, -1), 0),
                                 ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-                                ("TOPPADDING", (0, 0), (-1, -1), 12),
-                                ("BOTTOMPADDING", (0, 0), (-1, -1), 12),
+
+                                # 데이터 행만 여백 크게(헤더는 기본값 유지)
+                                ("TOPPADDING", (0, 1), (-1, -1), 12),
+                                ("BOTTOMPADDING", (0, 1), (-1, -1), 12),
                         ]
                 )
         )
 
-        # 표 추가
         story.append(table)
 
         doc.build(story)
