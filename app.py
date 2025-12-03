@@ -494,167 +494,34 @@ if REPORTLAB_AVAILABLE:
         uploaded_image=None,
         pasted_text: str | None = None,
     ) -> bytes:
-        """
-        - 제목 / 표 모두 왼쪽 정렬
-        - pasted_text가 있으면 제목 아래에 그대로 출력
-        - uploaded_image는 지금은 안 써도 됨(차후 확장용)
-        """
-        import io
-        from reportlab.platypus import (
-            SimpleDocTemplate,
-            Table,
-            TableStyle,
-            Paragraph,
-            Spacer,
-            Image,
-        )
-        from reportlab.lib.pagesizes import A4, landscape
-        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-        from reportlab.lib import colors
-
-        buffer = io.BytesIO()
-
-        doc = SimpleDocTemplate(
-            buffer,
-            pagesize=landscape(A4),
-            leftMargin=20,
-            rightMargin=20,
-            topMargin=20,
-            bottomMargin=20,
-        )
-
-        styles = getSampleStyleSheet()
-
-        title_style = ParagraphStyle(
-            "TitleStyle",
-            parent=styles["Heading1"],
-            fontName=KOREAN_FONT_NAME,
-            fontSize=15,
-            alignment=0,   # LEFT
-        )
-
-        text_style = ParagraphStyle(
-            "TextStyle",
-            parent=styles["Normal"],
-            fontName=KOREAN_FONT_NAME,
-            fontSize=10,
-            leading=14,
-            alignment=0,   # LEFT
-        )
-
-        table_style = TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
-                ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
-                ("ALIGN", (0, 0), (-1, -1), "LEFT"),  # 표 전체 왼쪽 정렬
-                ("FONTNAME", (0, 0), (-1, -1), KOREAN_FONT_NAME),
-                ("FONTSIZE", (0, 0), (-1, -1), 8),
-                ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
-
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 20),
-                ("TOPPADDING",    (0, 0), (-1, -1), 20),
-                ("MINROWHEIGHT",    (0, 0), (-1, -1), 35),
-            ]
-        )
-
-        story = []
-
-        # 1) 제목
-        suju_list = df_export["수주번호"].dropna().astype(str).unique()
-        name_list = df_export["완성품명"].dropna().astype(str).unique()
-        title_text = f"{suju_list[0] if len(suju_list) else ''} {name_list[0] if len(name_list) else ''}".strip()
-
-        story.append(Paragraph(title_text, title_style))
-        story.append(Spacer(1, 12))
-
-        # 2) 상단 메모 (텍스트)
-        if pasted_text is not None and pasted_text.strip() != "":
-            # <, >, & 등 이스케이프 + 줄바꿈을 <br/>로 변환
-            safe_text = escape(pasted_text).replace("\n", "<br/>")
-            story.append(Paragraph(safe_text, text_style))
-            story.append(Spacer(1, 12))
-
-        # 3) (원하면 이미지도 여기에)
-        if uploaded_image:
-            try:
-                img = Image(uploaded_image, width=400, height=300)
-                story.append(img)
-                story.append(Spacer(1, 12))
-            except Exception:
-                pass
-
-        # 표 구성: 기존 + 1P, 2P, 3P, 4P 4칸 추가
-        base_cols = ["품번", "품명", "작불", "예상재고", "ERP재고"]
-        table_cols = base_cols + ["1P", "2P", "3P", "4P"]
-        table_data = [table_cols]
-
-        for _, row in df_export.iterrows():
-                # df_export 에는 1P~4P 컬럼이 없으니까, 기존 데이터만 넣고 4칸은 공백으로 채움
-                base_values = [str(row.get(c, "")) for c in base_cols]
-                extra_values = ["", "", "", ""]  # 1P, 2P, 3P, 4P
-                table_data.append(base_values + extra_values)
-
-        # 🔥 행 높이 (헤더는 기본, 데이터 행만 높게)
-        default_height = None        # 헤더
-        data_height = 40             # 데이터 행
-        row_heights = [default_height] + [data_height] * (len(table_data) - 1)
-
-        # 🔥 컬럼 폭 설정
-        #  - 앞의 5개 컬럼은 None(자동)
-        #  - 1P~4P 4칸만 넓게(예: 80pt씩) → 필요하면 숫자 키워서 조절
-        col_widths = [None, None, None, None, None, 130, 130, 80, 80]
-
-        table = Table(
-                table_data,
-                repeatRows=1,
-                rowHeights=row_heights,
-                colWidths=col_widths,
-                hAlign="LEFT",   # 표 전체 왼쪽 정렬
-        )
-
-        table.setStyle(
-                TableStyle(
-                        [
-                                ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
-                                ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
-                                ("ALIGN", (0, 0), (-1, -1), "LEFT"),
-                                ("FONTNAME", (0, 0), (-1, -1), KOREAN_FONT_NAME),
-                                ("FONTSIZE", (0, 0), (-1, -1), 8),
-                                ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
-
-                                ("LEFTPADDING", (0, 0), (-1, -1), 0),
-                                ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-
-                                # 데이터 행만 위/아래 여백 크게
-                                ("TOPPADDING",    (0, 1), (-1, -1), 12),
-                                ("BOTTOMPADDING", (0, 1), (-1, -1), 12),
-                        ]
-                )
-        )
-
-        story.append(table)
-
-        doc.build(story)
-        pdf_bytes = buffer.getvalue()
-        buffer.close()
+        # 👉 여기에는 네가 이미 쓰고 있는 기존 generate_pdf 코드 그대로 둬도 됨
+        ...
         return pdf_bytes
 
-    # 🔹 부자재반입 라벨 PDF 생성용
-    def generate_label_pdf(df_labels: pd.DataFrame) -> bytes:
-        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-        from reportlab.lib.pagesizes import A4
-        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    # 🔹 소형 라벨프린터(100×120mm)용 부자재반입 라벨 PDF
+    def generate_label_pdf(df_labels: pd.DataFrame, barcode_value: str) -> bytes:
+        """
+        df_labels: '품명', '품번', '단위수량', '환입일' 컬럼을 가진 DataFrame
+        barcode_value: 사용자가 입력한 부자재반입요청번호 (예: B202511-00120001)
+        1행당 라벨 1장 (100mm x 120mm)
+        """
         import io
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
         buffer = io.BytesIO()
 
+        # 🔸 페이지 크기: 100mm x 120mm
+        LABEL_WIDTH = 100 * mm
+        LABEL_HEIGHT = 120 * mm
+
         doc = SimpleDocTemplate(
             buffer,
-            pagesize=A4,
-            leftMargin=40,
-            rightMargin=40,
-            topMargin=40,
-            bottomMargin=40,
+            pagesize=(LABEL_WIDTH, LABEL_HEIGHT),
+            leftMargin=5 * mm,
+            rightMargin=5 * mm,
+            topMargin=5 * mm,
+            bottomMargin=5 * mm,
         )
 
         styles = getSampleStyleSheet()
@@ -662,16 +529,16 @@ if REPORTLAB_AVAILABLE:
             "LabelTitle",
             parent=styles["Heading1"],
             fontName=KOREAN_FONT_NAME,
-            fontSize=32,
-            alignment=1,
+            fontSize=18,
+            alignment=1,  # CENTER
         )
         text_style = ParagraphStyle(
             "LabelText",
             parent=styles["Normal"],
             fontName=KOREAN_FONT_NAME,
-            fontSize=14,
-            leading=20,
-            alignment=0,
+            fontSize=11,
+            leading=14,
+            alignment=0,  # LEFT
         )
 
         story = []
@@ -687,17 +554,12 @@ if REPORTLAB_AVAILABLE:
                     환입일_str = pd.to_datetime(환입일).strftime("%Y-%m-%d")
                 else:
                     환입일_str = ""
-            except:
+            except Exception:
                 환입일_str = str(환입일)
 
-            date_for_barcode = (
-                pd.to_datetime(환입일).strftime("%y%m%d")
-                if pd.notna(환입일) else date.today().strftime("%y%m%d")
-            )
-            barcode_value = f"B{date_for_barcode}-{idx+1:07d}"
-
+            # ----- 라벨 한 장 -----
             story.append(Paragraph("부자재반입", title_style))
-            story.append(Spacer(1, 30))
+            story.append(Spacer(1, 10))
 
             lines = [
                 f"품명      {escape(품명)}",
@@ -707,24 +569,21 @@ if REPORTLAB_AVAILABLE:
             ]
             for line in lines:
                 story.append(Paragraph(line, text_style))
-                story.append(Spacer(1, 6))
-
-            story.append(Spacer(1, 40))
-
-            bc = code128.Code128(barcode_value, barHeight=20*mm, barWidth=0.5)
-            
-            # 바코드 생성
-            bc = code128.Code128(barcode_value, barHeight=20 * mm, barWidth=0.5)
-
-            # 바코드를 담을 Drawing 객체 생성
-            barcode_drawing = Drawing(bc.width, bc.height)
-            barcode_drawing.add(bc)
-
-            story.append(barcode_drawing)
+                story.append(Spacer(1, 4))
 
             story.append(Spacer(1, 10))
+
+            # 🔥 바코드 (사용자가 입력한 부자재반입요청번호)
+            bc = code128.Code128(barcode_value, barHeight=25 * mm, barWidth=0.4)
+            barcode_drawing = Drawing(bc.width, bc.height)
+            barcode_drawing.add(bc)
+            story.append(barcode_drawing)
+
+            # 바코드 아래 텍스트
+            story.append(Spacer(1, 6))
             story.append(Paragraph(barcode_value, text_style))
 
+            # 여러 개 선택 시, 다음 라벨은 새 페이지에
             if idx != len(df_labels) - 1:
                 story.append(PageBreak())
 
@@ -1518,39 +1377,70 @@ if menu == "↩️ 환입 관리":
     else:
         # 화면용: 계산된 df_full 그대로 VISIBLE_COLS 기준으로 보여주기
         df_visible = df_full[[c for c in VISIBLE_COLS if c in df_full.columns]].copy()
-        st.dataframe(df_visible, use_container_width=True)
 
-        # 🔽 라벨 출력용 선택 UI
-        label_source_cols = ["품번", "품명", "단위수량", "환입일"]
-        if all(col in df_full.columns for col in label_source_cols):
-            st.markdown("#### 🏷 라벨 출력용 자재 선택")
+        # 🔹 이 표에 바로 라벨 선택 컬럼 추가
+        if "라벨선택" not in df_visible.columns:
+            df_visible.insert(0, "라벨선택", False)
 
-            label_df = df_full[label_source_cols].copy()
-            label_df.insert(0, "선택", False)
+        df_visible_edit = st.data_editor(
+            df_visible,
+            use_container_width=True,
+            num_rows="dynamic",
+            key="return_visible_editor",
+        )
 
-            label_df = st.data_editor(
-                label_df,
-                use_container_width=True,
-                num_rows="dynamic",
-                key="label_editor",
-            )
+        # 🔹 사용자에게 부자재반입요청번호 입력 받기
+        st.markdown("#### 🏷 바코드(부자재반입요청번호) 입력")
+        barcode_value = st.text_input(
+            "부자재반입요청번호를 입력하세요 (예: B202511-00120001)",
+            key="barcode_input",
+        )
 
-            if st.button("🏷 선택한 자재 라벨 PDF 만들기", key="btn_make_labels"):
-                selected_labels = label_df[label_df["선택"] == True].copy()
-
-                if selected_labels.empty:
-                    st.warning("라벨을 출력할 행을 하나 이상 선택하세요.")
+        # 🔸 라벨 PDF 출력 버튼
+        if st.button("🏷 선택한 자재 바코드 라벨 PDF 만들기", key="btn_make_labels"):
+            if not barcode_value:
+                st.warning("부자재반입요청번호를 먼저 입력해주세요.")
+            else:
+                if "라벨선택" not in df_visible_edit.columns:
+                    st.error("라벨선택 컬럼을 찾을 수 없습니다.")
                 else:
-                    try:
-                        pdf_labels = generate_label_pdf(selected_labels)
-                        st.download_button(
-                            "📄 부자재반입 라벨 PDF 다운로드",
-                            data=pdf_labels,
-                            file_name="부자재_반입라벨.pdf",
-                            mime="application/pdf",
-                        )
-                    except Exception as e:
-                        st.error(f"라벨 PDF 생성 중 오류: {e}")
+                    selected_mask = df_visible_edit["라벨선택"] == True
+
+                    if not selected_mask.any():
+                        st.warning("라벨을 출력할 자재를 한 개 이상 선택하세요.")
+                    else:
+                        # 선택된 품번 목록
+                        if "품번" not in df_visible_edit.columns:
+                            st.error("품번 컬럼이 없어 라벨 데이터를 만들 수 없습니다.")
+                        else:
+                            selected_parts = (
+                                df_visible_edit.loc[selected_mask, "품번"]
+                                .astype(str)
+                                .tolist()
+                            )
+
+                            # df_full에서 실제 라벨에 사용할 데이터 추출
+                            required_cols = ["품명", "품번", "단위수량", "환입일"]
+                            if not all(col in df_full.columns for col in required_cols):
+                                st.error("라벨 생성에 필요한 컬럼(품명, 품번, 단위수량, 환입일)이 부족합니다.")
+                            else:
+                                df_labels = df_full[
+                                    df_full["품번"].astype(str).isin(selected_parts)
+                                ][required_cols].copy()
+
+                                if df_labels.empty:
+                                    st.warning("선택한 자재에서 라벨에 사용할 데이터를 찾지 못했습니다.")
+                                else:
+                                    try:
+                                        pdf_labels = generate_label_pdf(df_labels, barcode_value)
+                                        st.download_button(
+                                            "📄 부자재반입 라벨 PDF 다운로드",
+                                            data=pdf_labels,
+                                            file_name="부자재반입라벨.pdf",
+                                            mime="application/pdf",
+                                        )
+                                    except Exception as e:
+                                        st.error(f"라벨 PDF 생성 중 오류: {e}")
 
         # ---------- 품번별 수주번호 선택 (CSV 통합용) ----------
         merge_choices = {}
