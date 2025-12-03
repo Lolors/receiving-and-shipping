@@ -535,6 +535,13 @@ if REPORTLAB_AVAILABLE:
                 ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
                 ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
                 ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 2),
+
+                # 🔥 행 높이 3배 키우기
+                ("ROWHEIGHT", (0, 0), (-1, -1), 20),
+                
                 ("FONTNAME", (0, 0), (-1, -1), KOREAN_FONT_NAME),
                 ("FONTSIZE", (0, 0), (-1, -1), 8),
                 ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
