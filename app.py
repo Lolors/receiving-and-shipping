@@ -1084,11 +1084,7 @@ if menu == "🔍 수주 찾기":
                                                     st.markdown("#### 수주번호별 지시번호 / 품명 (작업지시 기준)")
                                                     st.dataframe(
                                                         df_job_filtered[["수주번호", "지시번호", "품명"]],
-                                                        use_container_width=True,
-                                                    )
-
-
-# ============================================================
+ # ============================================================
 # ↩️ 4. 환입 관리 화면 (+ 환입 예상재고)
 # ============================================================
 if menu == "↩️ 환입 관리":
@@ -1117,13 +1113,14 @@ if menu == "↩️ 환입 관리":
     ]
     df_return = ensure_session_df("환입관리", return_cols)
     df_full = ensure_session_df("환입재고예상", CSV_COLS)
+
     # 🔍 수주 검색 (입고 시트 기준)
     st.markdown("### 🔍 수주 검색 (입고 시트 기준)")
 
     search_keyword = st.text_input(
         "제품명으로 수주 검색 (입고 시트 E열, 부분 일치)",
         key="return_search_product",
-        placeholder="예: 앰플, 크림, 마스크팩 등"
+        placeholder="예: 앰플, 크림, 마스크팩 등",
     )
 
     if search_keyword:
@@ -1178,25 +1175,28 @@ if menu == "↩️ 환입 관리":
                 # 컬럼명 한글로 정리
                 rename_map = {}
                 rename_map[in_req_date_col] = "요청날짜"
-                if in_suju_col:      rename_map[in_suju_col] = "수주번호"
-                if in_jisi_col:      rename_map[in_jisi_col] = "지시번호"
-                if in_prod_name_col: rename_map[in_prod_name_col] = "제품명"
-                if in_part_col:      rename_map[in_part_col] = "품번"
+                if in_suju_col:
+                    rename_map[in_suju_col] = "수주번호"
+                if in_jisi_col:
+                    rename_map[in_jisi_col] = "지시번호"
+                if in_prod_name_col:
+                    rename_map[in_prod_name_col] = "제품명"
+                if in_part_col:
+                    rename_map[in_part_col] = "품번"
 
                 df_show.rename(columns=rename_map, inplace=True)
 
-                # 품번 제거
+                # 품번 제거 (검색용에서만 표시했다 지우기)
                 if "품번" in df_show.columns:
                     df_show = df_show.drop(columns=["품번"])
 
-                # 요청날짜는 중복 제거 기준에서 제외하고,
-                # 수주번호 + 지시번호만 유일하도록 정리
+                # 요청날짜는 중복 제거 기준 제외, 수주번호+지시번호 기준으로 유일하게
                 uniq_cols = [c for c in ["수주번호", "지시번호"] if c in df_show.columns]
                 df_show = df_show.drop_duplicates(subset=uniq_cols)
 
                 st.dataframe(df_show, use_container_width=True)
 
-                # 🔽 검색 결과에서 한 행을 선택하면 아래 수주번호/지시번호 자동 채우기
+                # 🔽 검색 결과에서 선택하면 아래 수주번호/지시번호 자동 채우기
                 if "수주번호" in df_show.columns:
                     df_select = df_show.reset_index(drop=True)
 
@@ -1208,7 +1208,6 @@ if menu == "↩️ 환입 관리":
                         jisi_val = str(row.get("지시번호", ""))
                         prod_val = str(row.get("제품명", ""))
 
-                        # 화면에 보여줄 라벨
                         label = f"{prod_val} | 수주:{suju_val}"
                         if jisi_val:
                             label += f" / 지시:{jisi_val}"
@@ -1224,18 +1223,16 @@ if menu == "↩️ 환입 관리":
 
                     if selected_label != "선택 안 함":
                         sel_suju, sel_jisi = option_map[selected_label]
-                        # 아래 입력칸에 자동 반영
                         st.session_state["return_suju_no"] = sel_suju
                         if sel_jisi:
                             st.session_state["return_jisi"] = sel_jisi
 
-    
     # ----- 입력 1줄 (수주번호, 지시번호, 생산공정, 종료조건) -----
     col_suju, col_jisi, col_proc, col_reason = st.columns(4)
     with col_suju:
         suju_no = st.text_input("수주번호", key="return_suju_no")
     with col_jisi:
-        selected_jisi = None  # 옵션 생성 후 채움
+        selected_jisi = None  # 아래에서 selectbox로 채움
     with col_proc:
         process_options = [
             "4층 덕용",
@@ -1247,9 +1244,7 @@ if menu == "↩️ 환입 관리":
             "6층 파우치",
             "6층 스킨팩",
         ]
-        process_value = st.selectbox(
-            "생산공정", process_options, key="return_process"
-        )
+        process_value = st.selectbox("생산공정", process_options, key="return_process")
     with col_reason:
         finish_reason = st.text_input("종료조건", key="return_finish_reason")
 
@@ -1414,10 +1409,7 @@ if menu == "↩️ 환입 관리":
             )
 
     # ----- 환입 데이터 불러오기 버튼 -----
-    if st.button(
-        "✅ 환입 데이터 불러오기",
-        key="btn_return_load",
-    ):
+    if st.button("✅ 환입 데이터 불러오기", key="btn_return_load"):
         if not suju_no:
             st.error("수주번호를 입력해주세요.")
         elif not selected_jisi:
@@ -1485,18 +1477,26 @@ if menu == "↩️ 환입 관리":
 
                 # ===== ERP재고 직접 매칭 패치 =====
                 stock_part_col = pick_col(df_stock_raw, "D", ["품번"])
-                stock_qty_col  = pick_col(df_stock_raw, "N", ["실재고수량"])
+                # 이름을 "실재고수량"으로 사용 (없으면 N열)
+                if "실재고수량" in df_stock_raw.columns:
+                    stock_qty_col = "실재고수량"
+                else:
+                    stock_qty_col = pick_col(df_stock_raw, "N", ["실재고수량"])
 
                 if stock_part_col and stock_qty_col:
                     stock_map = dict(
                         zip(
                             df_stock_raw[stock_part_col].astype(str),
-                            df_stock_raw[stock_qty_col].apply(safe_num)
+                            df_stock_raw[stock_qty_col].apply(safe_num),
                         )
                     )
-                    df_full["ERP재고"] = df_full["품번"].astype(str).map(stock_map).fillna(0)
+                    df_full["ERP재고"] = (
+                        df_full["품번"].astype(str).map(stock_map).fillna(0)
+                    )
                 else:
-                    st.warning("재고 시트에서 품번(D) 또는 실재고수량(N) 컬럼을 찾을 수 없습니다.")
+                    st.warning(
+                        "재고 시트에서 품번(D) 또는 실재고수량 컬럼을 찾을 수 없습니다."
+                    )
 
                 st.success(
                     f"선택된 자재 {len(df_new)}개에 대해 환입 예상재고 데이터가 갱신되었습니다."
@@ -1508,12 +1508,10 @@ if menu == "↩️ 환입 관리":
         df_full = st.session_state["환입재고예상"]
         st.success("환입 예상재고 데이터가 초기화되었습니다.")
 
-    # ----- 환입 예상재고 데이터 표시 + CSV + PDF + 코멘트 -----
+    # ----- 환입 예상재고 데이터 표시 + CSV + PDF + 라벨 -----
     st.markdown("### 환입 예상재고 데이터")
 
-    df_full = st.session_state.get(
-        "환입재고예상", pd.DataFrame(columns=CSV_COLS)
-    )
+    df_full = st.session_state.get("환입재고예상", pd.DataFrame(columns=CSV_COLS))
 
     if df_full.empty:
         st.write("환입 데이터 불러오기를 실행하면 이곳에 결과가 표시됩니다.")
@@ -1522,12 +1520,12 @@ if menu == "↩️ 환입 관리":
         df_visible = df_full[[c for c in VISIBLE_COLS if c in df_full.columns]].copy()
         st.dataframe(df_visible, use_container_width=True)
 
+        # 🔽 라벨 출력용 선택 UI
         label_source_cols = ["품번", "품명", "단위수량", "환입일"]
         if all(col in df_full.columns for col in label_source_cols):
             st.markdown("#### 🏷 라벨 출력용 자재 선택")
 
             label_df = df_full[label_source_cols].copy()
-            # 표시용: 선택 컬럼 맨 앞에 추가
             label_df.insert(0, "선택", False)
 
             label_df = st.data_editor(
@@ -1552,7 +1550,7 @@ if menu == "↩️ 환입 관리":
                             mime="application/pdf",
                         )
                     except Exception as e:
-                        st.error(f"라벨 PDF 생성 중 오류: {e}")       
+                        st.error(f"라벨 PDF 생성 중 오류: {e}")
 
         # ---------- 품번별 수주번호 선택 (CSV 통합용) ----------
         merge_choices = {}
@@ -1695,17 +1693,15 @@ if menu == "↩️ 환입 관리":
 
         # PDF 받기 버튼 (최종 CSV용 데이터 기준)
         if REPORTLAB_AVAILABLE and not csv_export_df.empty:
-
             st.markdown("### 📎 PDF 상단에 들어갈 메모를 입력하거나 붙여넣기(Ctrl+V) 하세요")
 
             pasted_text = st.text_area(
                 "PDF 메모",
                 height=100,
                 key="pdf_note_text",
-                placeholder="여기에 메모나 특이사항을 입력/붙여넣기 하세요."
+                placeholder="여기에 메모나 특이사항을 입력/붙여넣기 하세요.",
             )
 
-            # 텍스트만 사용해서 PDF 생성 (이미지는 사용 안 함)
             pdf_bytes = generate_pdf(csv_export_df, pasted_text=pasted_text)
 
             st.download_button(
@@ -1714,7 +1710,6 @@ if menu == "↩️ 환입 관리":
                 file_name="환입_예상재고.pdf",
                 mime="application/pdf",
             )
-
         elif not REPORTLAB_AVAILABLE:
             st.info("PDF 저장 기능을 쓰려면 `pip install reportlab` 설치가 필요합니다.")
 
@@ -1722,7 +1717,6 @@ if menu == "↩️ 환입 관리":
         in_suju_col = pick_col(df_in_raw, "B", ["수주번호"])
         in_jisi_col = pick_col(df_in_raw, "C", ["지시번호"])
         in_part_col = pick_col(df_in_raw, "M", ["품번"])
-        # 이름을 "비고"로 바꿨으므로 우선 "비고"를 찾고, 없으면 V열/비고2도 허용
         in_cmt_col = pick_col(df_in_raw, "V", ["비고", "비고2"])
 
         if in_suju_col and in_jisi_col and in_part_col and in_cmt_col:
