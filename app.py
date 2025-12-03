@@ -749,14 +749,14 @@ if REPORTLAB_AVAILABLE:
             story.append(Spacer(1, 8))
 
             # 🔥 바코드 생성 (너비 90px 기준, 중앙 정렬)
-            bar_width_px = 70
+            bar_width_px = 50
             bar_width_pt = bar_width_px * 0.75  # px → pt
             char_count = max(len(barcode_value), 1)
             bar_width = bar_width_pt / char_count  # 대략 전체 폭이 90px 정도 되도록
 
             bc = code128.Code128(
                 barcode_value,
-                barHeight=25 * mm,
+                barHeight=20 * mm,
                 barWidth=bar_width,
             )
 
