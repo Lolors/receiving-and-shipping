@@ -1672,7 +1672,6 @@ if menu == "🧩 공통자재":
     )
 
     if search_part:
-        # ---- 1) BOM 시트에서 자재 품번(C열) → 품목코드(A), 품명(B) 찾기 ----
         df_bom = df_bom_raw.copy()
 
         bom_item_col = pick_col(df_bom, "A", ["품목코드"])
@@ -1687,10 +1686,9 @@ if menu == "🧩 공통자재":
             if df_bom_hit.empty:
                 st.info("해당 자재 품번을 사용하는 품목코드를 BOM에서 찾지 못했습니다.")
             else:
-                df_bom_hit = df_bom_hit[[bom_part_col, bom_item_col, bom_name_col]].drop_duplicates()
-                df_bom_hit.columns = ["자재품번", "품목코드", "품명"]
+                df_bom_hit = df_bom_hit[[bom_item_col, bom_name_col]].drop_duplicates()
+                df_bom_hit.columns = ["완성품번", "품명"]
 
-                # ---- 2) 입고 시트에서 완성품번(D열) = 품목코드 인 행 중 '가장 마지막 행'의 요청날짜(K열) ----
                 df_in = df_in_raw.copy()
                 in_fin_col = pick_col(df_in, "D", ["완성품번", "품목코드", "품번"])
                 in_req_date_col = pick_col(df_in, "K", ["요청날짜", "요청일"])
@@ -1698,7 +1696,6 @@ if menu == "🧩 공통자재":
                 if in_fin_col is None or in_req_date_col is None:
                     st.error("입고 시트에서 완성품번(D열) 또는 요청날짜(K열) 컬럼을 찾지 못했습니다.")
                 else:
-                    # 날짜형으로 변환
                     df_in[in_req_date_col] = pd.to_datetime(
                         df_in[in_req_date_col], errors="coerce"
                     ).dt.date
@@ -1707,9 +1704,8 @@ if menu == "🧩 공통자재":
                     result_rows = []
 
                     for _, r in df_bom_hit.iterrows():
-                        item_code = r["품목코드"]
+                        item_code = r["완성품번"]
                         name = r["품명"]
-                        comp_part = r["자재품번"]
 
                         sub = df_in[df_in[in_fin_col] == item_code].copy()
                         sub = sub.dropna(subset=[in_req_date_col])
@@ -1717,30 +1713,31 @@ if menu == "🧩 공통자재":
                         if sub.empty:
                             last_date = None
                             days_diff = None
-                            status = "요청이력 없음"
+                            mark_1w = ""
+                            mark_2w = ""
                         else:
-                            # 가장 마지막 행의 요청날짜 (엑셀 상 맨 아래 행 기준 → 날짜 오름차순 후 마지막)
+                            # 가장 마지막(맨 아래) 행 기준 요청날짜
                             sub = sub.sort_values(in_req_date_col)
                             last_date = sub[in_req_date_col].iloc[-1]
-                            days_diff = (today - last_date).days if last_date else None
+                            days_diff = (today - last_date).days
 
-                            if days_diff is None:
-                                status = "날짜 오류"
-                            elif days_diff <= 7:
-                                status = "1주 이내"
+                            if days_diff <= 7:
+                                mark_1w = "V"
+                                mark_2w = ""
                             elif days_diff <= 14:
-                                status = "2주 이내"
+                                mark_1w = ""
+                                mark_2w = "V"
                             else:
-                                status = "2주 초과"
+                                mark_1w = ""
+                                mark_2w = ""
 
                         result_rows.append(
                             {
-                                "자재품번": comp_part,
-                                "품목코드(완성품)": item_code,
-                                "품명(완성품)": name,
-                                "마지막 요청날짜": last_date,
-                                "경과일수": days_diff,
-                                "구분": status,
+                                "완성품번": item_code,
+                                "품명": name,
+                                "불출요청일": last_date,
+                                "1주 이내": mark_1w,
+                                "2주 이내": mark_2w,
                             }
                         )
 
@@ -1749,4 +1746,10 @@ if menu == "🧩 공통자재":
                     if df_result.empty:
                         st.info("조건에 해당하는 데이터가 없습니다.")
                     else:
+                        # 최신 불출요청일이 위로 오도록 정렬 (선택사항)
+                        df_result = df_result.sort_values(
+                            by="불출요청일", ascending=False, na_position="last"
+                        ).reset_index(drop=True)
+
                         st.dataframe(df_result, use_container_width=True)
+
