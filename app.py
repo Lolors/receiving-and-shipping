@@ -1544,31 +1544,53 @@ if menu == "↩️ 환입 관리":
     jisi_options = []
     finished_part_selected = None
 
+    # 🔹 작업지시 시트의 작업장 컬럼(X열) 찾기
+    job_wc_col = pick_col(df_job_raw, "X", ["작업장"])
+
     if suju_no:
         if "수주번호" in df_job_raw.columns:
+            # 1차: 수주번호 기준 필터
             df_job_suju = df_job_raw[df_job_raw["수주번호"] == suju_no].copy()
 
-            finished_parts = (
-                df_job_suju["품번"].dropna().unique().tolist()
-                if "품번" in df_job_suju.columns
-                else []
-            )
-            if len(finished_parts) > 1:
-                finished_part_selected = st.selectbox(
-                    "완성품번", finished_parts, key="return_finished_part"
-                )
+            # 🔹 2차: 작업장 WC401~WC404 조건 추가
+            if job_wc_col and job_wc_col in df_job_suju.columns:
                 df_job_suju = df_job_suju[
-                    df_job_suju["품번"] == finished_part_selected
+                    df_job_suju[job_wc_col].astype(str).isin(
+                        ["WC401", "WC402", "WC403", "WC404"]
+                    )
                 ]
-            elif len(finished_parts) == 1:
-                finished_part_selected = finished_parts[0]
 
-            if "지시번호" in df_job_suju.columns:
-                jisi_options = df_job_suju["지시번호"].dropna().unique().tolist()
+            # 👉 필터 후 아무 것도 없으면 안내
+            if df_job_suju.empty:
+                st.warning("해당 수주번호에 대해 작업장 WC401~WC404 작업지시가 없습니다.")
             else:
-                st.error("작업지시 시트에 '지시번호' 컬럼이 없습니다.")
+                # 완성품번 후보
+                finished_parts = (
+                    df_job_suju["품번"].dropna().unique().tolist()
+                    if "품번" in df_job_suju.columns
+                    else []
+                )
+
+                if len(finished_parts) > 1:
+                    finished_part_selected = st.selectbox(
+                        "완성품번", finished_parts, key="return_finished_part"
+                    )
+                    df_job_suju = df_job_suju[
+                        df_job_suju["품번"] == finished_part_selected
+                    ]
+                elif len(finished_parts) == 1:
+                    finished_part_selected = finished_parts[0]
+
+                # 지시번호 후보
+                if "지시번호" in df_job_suju.columns:
+                    jisi_options = (
+                        df_job_suju["지시번호"].dropna().unique().tolist()
+                    )
+                else:
+                    st.error("작업지시 시트에 '지시번호' 컬럼이 없습니다.")
         else:
             st.error("작업지시 시트에 '수주번호' 컬럼이 없습니다.")
+
 
     # 지시번호 선택 (수주번호 입력 후)
     if jisi_options:
