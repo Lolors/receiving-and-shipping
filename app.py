@@ -1751,10 +1751,10 @@ if menu == "🧩 공통자재":
                             by="불출요청일", ascending=False, na_position="last"
                         ).reset_index(drop=True)
 
-                    df_result_styled = df_result.style.set_properties(
-                        subset=["1주 이내", "2주 이내"],
-                        **{"text-align": "center"}
-                    )
+                        df_result_styled = df_result.style.set_properties(
+                            subset=["1주 이내", "2주 이내"],
+                            **{"text-align": "center"}
+                        )
 
                         st.dataframe(df_result, use_container_width=True)
 
