@@ -1001,6 +1001,15 @@ if menu == "📦 입고 조회":
 
             df_filtered.rename(columns=rename_map, inplace=True)
 
+            # 🔍 품명 필터 추가 (사용자가 입력한 경우만)
+            if name_filter:
+                if "품명" in df_filtered.columns:
+                    df_filtered = df_filtered[
+                        df_filtered["품명"].astype(str).str.contains(
+                            name_filter, case=False, na=False
+                        )
+                    ]
+
             # 🔥 엑셀에서 "마지막(맨 아래) 행"이 위로 오도록: 인덱스 역순 정렬
             df_filtered = df_filtered.iloc[::-1].reset_index(drop=True)
 
