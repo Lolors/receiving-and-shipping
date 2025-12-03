@@ -402,7 +402,7 @@ def recalc_return_expectation(df_return, aggs):
         subset=["수주번호", "지시번호", "품번"], keep="last"
     ).copy()
 
-    # 1) 입고 집계 붙이기: ERP불출수량, 현장실물입고 ([수주번호, 지시번호, 품번])
+    # 1) 입고 집계 붙이기
     df = df.merge(
         aggs["in"],
         how="left",
@@ -410,28 +410,28 @@ def recalc_return_expectation(df_return, aggs):
         suffixes=("", "_in"),
     )
 
-    # 2) 작업지시 집계 붙이기: 지시수량 (지시번호)
+    # 2) 작업지시 집계 붙이기
     df = df.merge(
         aggs["job"],
         how="left",
         on="지시번호",
     )
 
-    # 3) 생산실적 집계 붙이기: 생산수량, QC샘플, 기타샘플 (수주번호 기준)
+    # 3) 생산실적 집계 붙이기 (수주번호 기준: 생산수량 / QC / 기타샘플)
     df = df.merge(
         aggs["result"],
         how="left",
-        on="수주번호"
+        on="수주번호",
     )
 
-    # 4) 불량 집계 붙이기: 원불, 작불 ([지시번호, 품번])
+    # 4) 불량 집계 붙이기
     df = df.merge(
         aggs["defect"],
         how="left",
         on=["지시번호", "품번"],
     )
 
-    # 5) 재고 집계 붙이기: ERP재고 (품번)
+    # 5) 재고 집계 붙이기
     if "ERP재고" in df.columns:
         df = df.drop(columns=["ERP재고"])
     df = df.merge(
@@ -440,7 +440,7 @@ def recalc_return_expectation(df_return, aggs):
         on="품번",
     )
 
-    # 숫자 컬럼들 NaN -> 0, 문자열이면 float 변환
+    # 숫자 컬럼들 NaN -> 0
     num_cols = [
         "ERP불출수량",
         "현장실물입고",
@@ -459,17 +459,17 @@ def recalc_return_expectation(df_return, aggs):
         else:
             df[col] = 0.0
 
-    # 최종 공식
+    # ✅ 네가 말한 공식 그대로
     df["예상재고"] = (
         df["현장실물입고"]
         - (df["생산수량"] + df["QC샘플"] + df["기타샘플"]) * df["단위수량"]
         - df["작불"]
     )
 
-    # 완성품명: 제품명 컬럼을 그대로 사용
+    # 완성품명은 제품명 컬럼 그대로 사용
     df["완성품명"] = df.get("제품명", None)
 
-    # CSV용 전체 컬럼만 추출 (없으면 추가)
+    # CSV용 전체 컬럼만 추출
     for col in CSV_COLS:
         if col not in df.columns:
             df[col] = None
@@ -481,15 +481,17 @@ def recalc_return_expectation(df_return, aggs):
 # PDF 생성 함수
 # -----------------------------
 if REPORTLAB_AVAILABLE:
+    from xml.sax.saxutils import escape  # 메모에 들어가는 <, > 같은 문자 이스케이프용
+
     def generate_pdf(
         df_export: pd.DataFrame,
         uploaded_image=None,
-        pasted_text=None
+        pasted_text: str | None = None,
     ) -> bytes:
         """
         - 제목 / 표 모두 왼쪽 정렬
-        - 붙여넣은 텍스트가 있으면 제목 아래에 출력
-        - 붙여넣은 이미지(base64) 있으면 그 아래에 출력
+        - pasted_text가 있으면 제목 아래에 그대로 출력
+        - uploaded_image는 지금은 안 써도 됨(차후 확장용)
         """
         import io
         from reportlab.platypus import (
@@ -538,16 +540,19 @@ if REPORTLAB_AVAILABLE:
             [
                 ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
                 ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
-                ("ALIGN", (0, 0), (-1, -1), "LEFT"),  # 왼쪽 정렬
+                ("ALIGN", (0, 0), (-1, -1), "LEFT"),  # 표 전체 왼쪽 정렬
                 ("FONTNAME", (0, 0), (-1, -1), KOREAN_FONT_NAME),
                 ("FONTSIZE", (0, 0), (-1, -1), 8),
                 ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
+                # 행간(높이) 넉넉하게: 기본의 약 3배 정도
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 9),
+                ("TOPPADDING",    (0, 0), (-1, -1), 9),
             ]
         )
 
         story = []
 
-        # 제목 구성
+        # 1) 제목
         suju_list = df_export["수주번호"].dropna().astype(str).unique()
         name_list = df_export["완성품명"].dropna().astype(str).unique()
         title_text = f"{suju_list[0] if len(suju_list) else ''} {name_list[0] if len(name_list) else ''}".strip()
@@ -555,12 +560,14 @@ if REPORTLAB_AVAILABLE:
         story.append(Paragraph(title_text, title_style))
         story.append(Spacer(1, 12))
 
-        # 붙여넣은 텍스트가 있으면 제목 아래에 출력
-        if pasted_text:
-            story.append(Paragraph(pasted_text.replace("\n", "<br/>"), text_style))
+        # 2) 상단 메모 (텍스트)
+        if pasted_text is not None and pasted_text.strip() != "":
+            # <, >, & 등 이스케이프 + 줄바꿈을 <br/>로 변환
+            safe_text = escape(pasted_text).replace("\n", "<br/>")
+            story.append(Paragraph(safe_text, text_style))
             story.append(Spacer(1, 12))
 
-        # 클립보드 이미지가 있을 경우 PDF 삽입
+        # 3) (원하면 이미지도 여기에)
         if uploaded_image:
             try:
                 img = Image(uploaded_image, width=400, height=300)
@@ -569,52 +576,24 @@ if REPORTLAB_AVAILABLE:
             except Exception:
                 pass
 
-        # 표 구성
+        # 4) 표
         table_cols = ["품번", "품명", "작불", "예상재고", "ERP재고"]
         table_data = [table_cols]
 
         for _, row in df_export.iterrows():
             table_data.append([str(row.get(c, "")) for c in table_cols])
 
-        table = Table(table_data, repeatRows=1, hAlign='LEFT')
-
-        table_style = TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
-                ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
-
-                # 🔥 셀 안 텍스트 왼쪽 정렬
-                ("ALIGN", (0, 0), (-1, -1), "LEFT"),
-        
-                # 🔥 표 양쪽 여백 최소화
-                ("LEFTPADDING", (0, 0), (-1, -1), 0),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 2),
-                ("TOPPADDING", (0, 0), (-1, -1), 2),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
-
-                ("FONTNAME", (0, 0), (-1, -1), KOREAN_FONT_NAME),
-                ("FONTSIZE", (0, 0), (-1, -1), 8),
-
-                ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
-            ]
-        )
-
+        table = Table(table_data, repeatRows=1)
         table.setStyle(table_style)
         story.append(table)
 
         doc.build(story)
-
-        # 그냥 reportlab이 만든 raw PDF bytes 그대로 반환 (따로 ANSI 재인코딩 X)
         pdf_bytes = buffer.getvalue()
         buffer.close()
         return pdf_bytes
 
 else:
-    def generate_pdf(
-        df_export: pd.DataFrame,
-        uploaded_image=None,
-        pasted_text=None
-    ) -> bytes:
+    def generate_pdf(df_export: pd.DataFrame, uploaded_image=None, pasted_text=None) -> bytes:
         raise RuntimeError("reportlab 패키지가 설치되어 있지 않습니다.")
 
 # -----------------------------
