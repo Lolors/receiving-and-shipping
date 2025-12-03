@@ -1671,14 +1671,11 @@ if menu == "↩️ 환입 관리":
 
                         df_new = pd.DataFrame(new_rows)
 
-                        # 기존 + 신규 합쳐서 중복 제거
-                        df_return = pd.concat(
-                            [df_return, df_new], ignore_index=True
-                        )
-                        df_return = df_return.drop_duplicates(
-                            subset=["수주번호", "지시번호", "품번"], keep="last"
-                        ).reset_index(drop=True)
+                        # ✅ 이전 환입관리 내용은 버리고,
+                        #    이번에 선택한 자재(df_new)만 환입관리로 사용
+                        df_return = df_new.copy()
                         st.session_state["환입관리"] = df_return
+
 
                         # 집계 최초 생성
                         if st.session_state["aggregates"] is None:
@@ -1725,9 +1722,15 @@ if menu == "↩️ 환입 관리":
 
             # 🧹 환입 예상재고 초기화 실행 로직
             if clear_clicked:
+                # ✅ 환입관리도 함께 초기화
+                st.session_state["환입관리"] = pd.DataFrame(columns=return_cols)
+                df_return = st.session_state["환입관리"]
+
                 st.session_state["환입재고예상"] = pd.DataFrame(columns=CSV_COLS)
                 df_full = st.session_state["환입재고예상"]
-                st.success("환입 예상재고 데이터가 초기화되었습니다.")
+
+                st.success("환입 관리 / 환입 예상재고 데이터가 모두 초기화되었습니다.")
+
 
     # ----- 환입 예상재고 데이터 표시 + CSV + PDF + 라벨 -----
     st.markdown("### 환입 예상재고 데이터")
