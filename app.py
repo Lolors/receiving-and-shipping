@@ -712,9 +712,15 @@ if REPORTLAB_AVAILABLE:
             story.append(Spacer(1, 40))
 
             bc = code128.Code128(barcode_value, barHeight=20*mm, barWidth=0.5)
-            drawing = Drawing(0, 0)
-            drawing.add(bc)
-            story.append(drawing)
+            
+            # 바코드 생성
+            bc = code128.Code128(barcode_value, barHeight=20 * mm, barWidth=0.5)
+
+            # 바코드를 담을 Drawing 객체 생성
+            barcode_drawing = Drawing(bc.width, bc.height)
+            barcode_drawing.add(bc)
+
+            story.append(barcode_drawing)
 
             story.append(Spacer(1, 10))
             story.append(Paragraph(barcode_value, text_style))
