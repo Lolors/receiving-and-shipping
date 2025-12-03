@@ -647,8 +647,11 @@ if REPORTLAB_AVAILABLE:
         1행당 라벨 1장 (100mm x 120mm)
         """
         import io
-        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import mm
+        from reportlab.graphics.barcode import code128
+        from xml.sax.saxutils import escape
 
         buffer = io.BytesIO()
 
@@ -714,17 +717,15 @@ if REPORTLAB_AVAILABLE:
 
             story.append(Spacer(1, 10))
 
-            # 바코드 (사용자가 입력한 부자재반입요청번호)
+            # 🔥 바코드 Flowable 직접 추가 (Drawing 사용 X)
             bc = code128.Code128(barcode_value, barHeight=25 * mm, barWidth=0.4)
-            barcode_drawing = Drawing(bc.width, bc.height)
-            barcode_drawing.add(bc)
-            story.append(barcode_drawing)
+            story.append(bc)
 
             # 바코드 아래 텍스트
             story.append(Spacer(1, 6))
             story.append(Paragraph(barcode_value, text_style))
 
-            # 여러 개 선택 시, 다음 라벨은 새 페이지에
+            # 여러 개일 경우 다음 페이지로
             if idx != len(df_labels) - 1:
                 story.append(PageBreak())
 
