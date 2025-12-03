@@ -545,10 +545,10 @@ if REPORTLAB_AVAILABLE:
                 ("ALIGN", (0, 0), (-1, -1), "LEFT"),  # 표 전체 왼쪽 정렬
                 ("FONTNAME", (0, 0), (-1, -1), KOREAN_FONT_NAME),
                 ("FONTSIZE", (0, 0), (-1, -1), 8),
-                ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-                # 행간(높이) 넉넉하게: 기본의 약 3배 정도
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 9),
-                ("TOPPADDING",    (0, 0), (-1, -1), 9),
+                ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
+
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 20),
+                ("TOPPADDING",    (0, 0), (-1, -1), 20),
             ]
         )
 
