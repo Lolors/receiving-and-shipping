@@ -1871,6 +1871,10 @@ if menu == "↩️ 환입 관리":
             if col not in df_full.columns:
                 df_full[col] = default
 
+        # ✅ 체크박스 컬럼은 확실하게 bool 타입으로 고정
+        df_full["공통부자재"] = df_full["공통부자재"].fillna(False).astype(bool)
+        df_full["라벨선택"] = df_full["라벨선택"].fillna(False).astype(bool)
+
         # -------------------------------------------------
         # 1) 추가수주 자동 채우기용 공통 입고기간 선택 (전체 공통)
         # -------------------------------------------------
@@ -1894,31 +1898,40 @@ if menu == "↩️ 환입 관리":
         #   - 입고시작일/입고종료일: 화면에서 숨김 (내부 컬럼만 유지)
         # -------------------------------------------------
         base_cols = [c for c in VISIBLE_COLS if c in df_full.columns]
-        # 입고기간 컬럼은 화면에서 안 쓸 거라 추가 X
-        # extra_cols = ["입고시작일", "입고종료일", "추가수주"]
-        # 대신 추가수주만 별도로 위치 조정해서 넣기
 
-        df_visible = df_full[base_cols].copy()
+        # 👉 표시 순서 직접 구성 (data_editor에 넘길 컬럼 리스트)
+        display_cols = []
 
-        # 👉 수주번호 바로 뒤에 추가수주 컬럼 삽입
-        if "수주번호" in df_visible.columns:
-            insert_pos = df_visible.columns.get_loc("수주번호") + 1
-            df_visible.insert(
-                insert_pos,
-                "추가수주",
-                df_full["추가수주"].astype(str),
-            )
+        # 1) 맨 앞에 공통부자재
+        display_cols.append("공통부자재")
+
+        # 2) 수주번호 / 추가수주 / 나머지 기본 컬럼
+        if "수주번호" in base_cols:
+            display_cols.append("수주번호")
+            display_cols.append("추가수주")
+            for c in base_cols:
+                if c not in ["수주번호"]:  # 수주번호는 이미 넣었으니 제외
+                    display_cols.append(c)
         else:
+            # 수주번호가 없을 일은 거의 없겠지만, 방어코드
+            display_cols.extend(base_cols)
+            if "추가수주" not in display_cols:
+                display_cols.append("추가수주")
+
+        # ⚠ 라벨선택은 여기서는 안 넣음 (계산 결과에서만 보여줄 거라서)
+
+        # 실제 화면용 DF 만들기
+        df_visible = pd.DataFrame(index=df_full.index)
+
+        for c in display_cols:
+            if c in df_full.columns:
+                df_visible[c] = df_full[c]
+
+        # ✅ 공통부자재/추가수주는 타입 한 번 더 확실히
+        if "공통부자재" in df_visible.columns:
+            df_visible["공통부자재"] = df_full["공통부자재"].fillna(False).astype(bool)
+        if "추가수주" in df_visible.columns:
             df_visible["추가수주"] = df_full["추가수주"].astype(str)
-
-        # 👉 맨 앞에 공통부자재 체크박스 컬럼
-        df_visible.insert(
-            0,
-            "공통부자재",
-            df_full["공통부자재"].fillna(False),
-        )
-
-        # ⚠ 라벨선택은 여기서는 안 보여줌 (계산 결과에서만 사용)
 
         df_edit = st.data_editor(
             df_visible,
@@ -1931,6 +1944,9 @@ if menu == "↩️ 환입 관리":
         for col in ["공통부자재", "입고시작일", "입고종료일", "추가수주"]:
             if col in df_edit.columns:
                 df_full.loc[df_edit.index, col] = df_edit[col]
+
+        # 다시 한 번 bool 고정 (사용자 입력 반영 후)
+        df_full["공통부자재"] = df_full["공통부자재"].fillna(False).astype(bool)
 
         # -------------------------------------------------
         # 3) 입고기간이 입력된 행은 '기간 + 품번' 기준으로 실물입고 재계산
@@ -2009,10 +2025,6 @@ if menu == "↩️ 환입 관리":
                     df_full.at[idx, "추가수주"] = extra
 
             st.success("공통부자재로 선택된 행에 대해서만, 입고기간 기준 추가수주 번호를 자동으로 채웠습니다.")
-       
-
-        # 최종 df_full을 세션에 저장
-        st.session_state["환입재고예상"] = df_full
 
         # -------------------------------------------------
         # 5) 공통부자재: 기본수주 + 추가수주까지 포함해서 재계산
