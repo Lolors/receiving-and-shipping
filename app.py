@@ -587,7 +587,7 @@ if REPORTLAB_AVAILABLE:
                 table_data.append([str(row.get(c, "")) for c in table_cols])
 
         # 🔥 행 높이 강제 적용 (5배)
-        row_height = 40
+        row_height = 50
         row_heights = [row_height] * len(table_data)
 
         table = Table(
