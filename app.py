@@ -730,7 +730,7 @@ if REPORTLAB_AVAILABLE:
 
             # ----- 제목 -----
             story.append(Paragraph("부자재반입", title_style))
-            # 공백 4줄 정도
+            # 공백 2줄 정도
             story.append(Spacer(1, bold_text_style.leading * 2))
 
             # ----- 굵은 텍스트 필드 (사이사이 1줄 공백) -----
@@ -749,7 +749,7 @@ if REPORTLAB_AVAILABLE:
             story.append(Spacer(1, 8))
 
             # 🔥 바코드 생성 (너비 90px 기준, 중앙 정렬)
-            bar_width_px = 90
+            bar_width_px = 80
             bar_width_pt = bar_width_px * 0.75  # px → pt
             char_count = max(len(barcode_value), 1)
             bar_width = bar_width_pt / char_count  # 대략 전체 폭이 90px 정도 되도록
