@@ -1765,6 +1765,5 @@ if menu == "🧩 공통자재":
 
                         st.table(df_styled)
 
-
                         st.dataframe(df_result, use_container_width=True)
 
