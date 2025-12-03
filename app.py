@@ -463,6 +463,7 @@ def recalc_return_expectation(df_return, aggs):
     df["예상재고"] = (
         df["현장실물입고"]
         - (df["생산수량"] + df["QC샘플"] + df["기타샘플"]) * df["단위수량"]
+        - df["원불"]
         - df["작불"]
     )
 
