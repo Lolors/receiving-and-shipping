@@ -1935,8 +1935,8 @@ if menu == "↩️ 환입 관리":
         #      → 둘 중 하나만 눌러도 한 번에 처리
         # -------------------------------------------------
         with st.form("return_editor_form"):
-            # 👉 이건 '초기값'일 뿐, 진짜 최신 값은 session_state에서 다시 읽어올 거라 이름만 바꿈
-            df_initial = st.data_editor(
+
+            df_edit = st.data_editor(
                 df_visible,
                 use_container_width=True,
                 num_rows="fixed",
@@ -1947,7 +1947,7 @@ if menu == "↩️ 환입 관리":
                         default=False,
                     )
                 },
-                key="return_editor",   # ❗ 상태는 여기로 저장됨
+                key="return_editor",
             )
 
             col_btn1, col_btn2 = st.columns(2)
@@ -1956,13 +1956,9 @@ if menu == "↩️ 환입 관리":
             with col_btn2:
                 auto_clicked = st.form_submit_button("🔄 입고기간 기준으로 추가수주 자동 채우기")
 
-        # ✅ 폼이 submit된 후에는, 항상 session_state에 들어있는
-        #    '진짜 최신 에디터 값'으로 df_edit를 다시 만들어서 사용
-        if "return_editor" in st.session_state:
-            df_edit = st.session_state["return_editor"].copy()
-        else:
-            # 혹시 모를 경우를 위해 fallback
-            df_edit = df_initial
+        # 🔹 혹시 데이터가 비정상 타입으로 들어오는 경우 방지
+        if not isinstance(df_edit, pd.DataFrame):
+            df_edit = pd.DataFrame(df_edit)
 
         # -------------------------------------------------
         # 3) 폼이 제출되었을 때(df_edit → df_full 반영)
