@@ -1853,20 +1853,17 @@ if menu == "↩️ 환입 관리":
         "환입재고예상", pd.DataFrame(columns=CSV_COLS)
     )
 
-    # 🔑 항상 0,1,2,... 형태의 인덱스로 맞춰두기 (data_editor랑 동기화용)
+    # 인덱스 고정 (0,1,2,...)
     df_full = df_full.copy().reset_index(drop=True)
-    st.session_state["환입재고예상"] = df_full
 
     if df_full.empty:
         st.write("환입 데이터 불러오기를 실행하면 이곳에 결과가 표시됩니다.")
     else:
         # -------------------------------------------------
         # 0) 컬럼들 기본 세팅 (없으면 생성)
-        #    ➕ 공통부자재 컬럼 추가
+        #    ➕ 공통부자재 / 추가수주 / 라벨선택
         # -------------------------------------------------
         col_defaults = {
-            "입고시작일": None,
-            "입고종료일": None,
             "추가수주": "",
             "라벨선택": False,
             "공통부자재": False,   # ✅ 공통부자재 선택용
@@ -1875,10 +1872,13 @@ if menu == "↩️ 환입 관리":
             if col not in df_full.columns:
                 df_full[col] = default
 
-        # ✅ bool 컬럼은 진짜 bool 타입으로 고정
+        # bool 컬럼은 진짜 bool로 강제
         for bcol in ["라벨선택", "공통부자재"]:
             if bcol in df_full.columns:
                 df_full[bcol] = df_full[bcol].fillna(False).astype(bool)
+
+        # 최신 df_full을 세션에 반영 (기본형 잡기)
+        st.session_state["환입재고예상"] = df_full
 
         # -------------------------------------------------
         # 1) 추가수주 자동 채우기용 공통 입고기간 선택 (전체 공통)
@@ -1896,16 +1896,14 @@ if menu == "↩️ 환입 관리":
             start_date = end_date = date_range
 
         # -------------------------------------------------
-        # 2) 화면용 에디터
+        # 2) 화면용 에디터에 쓸 컬럼 구성
         #   - 공통부자재: 맨 앞 체크박스
         #   - 추가수주: 수주번호 바로 뒤
         #   - 라벨선택: ❌ 여기서는 안 보이게
-        #   - 입고시작일/입고종료일: 화면에서 숨김 (내부 컬럼만 유지)
         # -------------------------------------------------
         base_cols = [c for c in VISIBLE_COLS if c in df_full.columns]
 
-        # 👉 표시 순서 직접 구성 (data_editor에 넘길 컬럼 리스트)
-        display_cols = []
+        display_cols: list[str] = []
 
         # 1) 맨 앞에 공통부자재
         display_cols.append("공통부자재")
@@ -1922,25 +1920,64 @@ if menu == "↩️ 환입 관리":
             if "추가수주" not in display_cols:
                 display_cols.append("추가수주")
 
-        # ⚠ 라벨선택은 여기서는 안 넣음 (계산 결과에서만 보여줌)
+        # 라벨선택은 여기서 제외 (계산 결과에서만 노출)
+        if "라벨선택" in display_cols:
+            display_cols.remove("라벨선택")
 
-        # ✅ 인덱스를 그대로 쓰도록 슬라이싱
-        df_visible = df_full.copy()
+        # -------------------------------------------------
+        # 2-1) 편집용 DF(화면에 보여줄 DF)를 session_state에 따로 들고 간다
+        #      → data_editor와 1:1로만 사용 (df_full은 계산용)
+        # -------------------------------------------------
+        editor_key = "return_editor_df"
 
-        # 우리가 보여주고 싶은 컬럼만 남겨두기
-        df_visible = df_visible[[c for c in display_cols if c in df_visible.columns]]
+        need_reset_editor = False
 
-        # ✅ 타입 한 번 더 정리
-        if "공통부자재" in df_visible.columns:
-            df_visible["공통부자재"] = df_full["공통부자재"].fillna(False).astype(bool)
-        if "추가수주" in df_visible.columns:
-            df_visible["추가수주"] = df_full["추가수주"].astype(str)
+        if editor_key not in st.session_state:
+            need_reset_editor = True
+        else:
+            # 행 개수나 인덱스가 바뀌었으면 에디터 DF 초기화
+            prev = st.session_state[editor_key]
+            if len(prev) != len(df_full):
+                need_reset_editor = True
 
+        if need_reset_editor:
+            # 새로 editor DF 구성
+            editor_df = pd.DataFrame(index=df_full.index)
+            for c in display_cols:
+                if c in df_full.columns:
+                    editor_df[c] = df_full[c]
+            # 타입 정리
+            if "공통부자재" in editor_df.columns:
+                editor_df["공통부자재"] = (
+                    editor_df["공통부자재"].fillna(False).astype(bool)
+                )
+            if "추가수주" in editor_df.columns:
+                editor_df["추가수주"] = editor_df["추가수주"].astype(str)
+
+            st.session_state[editor_key] = editor_df
+
+        # 항상 session_state에 든 DF를 에디터에 넘긴다
+        editor_df = st.session_state[editor_key]
+
+        # 혹시 display_cols에서 빠진 컬럼이 있으면 채워주기
+        for c in display_cols:
+            if c not in editor_df.columns and c in df_full.columns:
+                editor_df[c] = df_full[c]
+
+        # 타입 다시 한 번 정리
+        if "공통부자재" in editor_df.columns:
+            editor_df["공통부자재"] = editor_df["공통부자재"].fillna(False).astype(bool)
+        if "추가수주" in editor_df.columns:
+            editor_df["추가수주"] = editor_df["추가수주"].astype(str)
+
+        # -------------------------------------------------
+        # 2-2) data_editor: 이제 이건 오직 화면 상태용
+        # -------------------------------------------------
         df_edit = st.data_editor(
-            df_visible,
+            editor_df[display_cols],
             use_container_width=True,
-            num_rows="fixed",      # 행 개수 고정
-            hide_index=True,       # 인덱스 숨김
+            num_rows="fixed",
+            hide_index=True,
             column_config={
                 "공통부자재": st.column_config.CheckboxColumn(
                     "공통부자재",
@@ -1950,68 +1987,40 @@ if menu == "↩️ 환입 관리":
             key="return_editor",
         )
 
-        # ✅ 에디터에서 수정된 값들 df_full에 반영
+        # 🔁 에디터 결과를 다시 편집용 DF(state)에 저장
+        st.session_state[editor_key] = df_edit
+
+        # 🔁 그리고 필요한 컬럼만 df_full 쪽으로 복사 (아직 계산 X)
         if "공통부자재" in df_edit.columns:
-            df_full.loc[df_edit.index, "공통부자재"] = (
-                df_edit["공통부자재"].fillna(False).astype(bool)
+            df_full["공통부자재"] = (
+                df_edit["공통부자재"]
+                .reindex(df_full.index)
+                .fillna(False)
+                .astype(bool)
             )
         if "추가수주" in df_edit.columns:
-            df_full.loc[df_edit.index, "추가수주"] = df_edit["추가수주"].astype(str)
+            df_full["추가수주"] = (
+                df_edit["추가수주"]
+                .reindex(df_full.index)
+                .astype(str)
+            )
 
-        # 다시 한 번 bool 고정
-        df_full["공통부자재"] = df_full["공통부자재"].fillna(False).astype(bool)
-
-        # 🔴 여기 한 줄 추가: 편집 결과를 항상 세션에 저장 (버튼 안 눌러도 유지)
         st.session_state["환입재고예상"] = df_full
 
         # -------------------------------------------------
-        # 3) 입고기간이 입력된 행은 '기간 + 품번' 기준으로 실물입고 재계산
-        #    (입고시작일/입고종료일은 화면엔 안 보이지만 내부 컬럼은 유지)
-        # -------------------------------------------------
-        def apply_real_in_by_period(row):
-            part = row.get("품번", None)
-            start = row.get("입고시작일", None)
-            end = row.get("입고종료일", None)
-
-            if part is None or pd.isna(part) or pd.isna(start) or pd.isna(end):
-                return row
-
-            try:
-                s = pd.to_datetime(start).date()
-                e = pd.to_datetime(end).date()
-            except Exception:
-                return row
-
-            real_in = get_real_in_by_period(str(part), s, e)
-
-            prod = safe_num(row.get("생산수량", 0))
-            qc   = safe_num(row.get("QC샘플", 0))
-            etc  = safe_num(row.get("기타샘플", 0))
-            orig = safe_num(row.get("원불", 0))
-            proc = safe_num(row.get("작불", 0))
-            unit = safe_num(row.get("단위수량", 0))
-
-            row["현장실물입고"] = real_in
-            row["예상재고"] = (
-                real_in
-                - (prod + qc + etc) * unit
-                - orig
-                - proc
-            )
-            return row
-
-        df_full = df_full.apply(apply_real_in_by_period, axis=1)
-
-        # -------------------------------------------------
-        # 4) 버튼: 공통부자재 + 입고기간 기준으로 추가수주 자동 채우기
+        # 3) 버튼: 공통부자재 + 입고기간 기준으로 추가수주 자동 채우기
+        #    ✅ 이 버튼을 눌렀을 때만 추가수주 + 재계산 수행
         # -------------------------------------------------
         if st.button("🔄 입고기간 기준으로 추가수주 자동 채우기", key="btn_auto_extra_orders"):
+            df_full = st.session_state["환입재고예상"].copy()
+
+            # 공통부자재 체크된 행만 대상
             if "공통부자재" in df_full.columns:
                 target_idx = df_full.index[df_full["공통부자재"] == True]
             else:
-                target_idx = df_full.index
+                target_idx = df_full.index  # 혹시 컬럼 없으면 전체 (백업용)
 
-            # 4-1) 추가수주 자동 채우기
+            # -------- 3-1) 추가수주 자동 채우기 --------
             for idx in target_idx:
                 row = df_full.loc[idx]
                 part = row.get("품번", None)
@@ -2039,7 +2048,7 @@ if menu == "↩️ 환입 관리":
                 else:
                     df_full.at[idx, "추가수주"] = extra
 
-            # 4-2) 공통부자재 행 재계산
+            # -------- 3-2) 공통부자재 행 재계산 --------
             aggs = st.session_state.get("aggregates", None)
 
             if aggs is None:
@@ -2120,12 +2129,59 @@ if menu == "↩️ 환입 관리":
 
                     return row
 
+                # ✅ 공통부자재 체크된 행만 재계산
                 df_full.loc[target_idx] = df_full.loc[target_idx].apply(
                     recompute_row_with_extra_orders, axis=1
                 )
 
+            # 계산 끝난 df_full 저장
             st.session_state["환입재고예상"] = df_full
+
+            # 🔁 에디터용 DF에도 최신 추가수주 반영
+            editor_df = st.session_state[editor_key].copy()
+            if "추가수주" in editor_df.columns:
+                editor_df["추가수주"] = df_full["추가수주"].astype(str)
+            st.session_state[editor_key] = editor_df
+
             st.success("공통부자재로 선택된 행에 대해, 추가수주 자동 채우기 + 예상재고 재계산을 완료했습니다.")
+
+        # -------------------------------------------------
+        # 4) 계산 결과 (보기용) - 여기에서만 라벨선택 노출 & 편집
+        # -------------------------------------------------
+        df_full = st.session_state["환입재고예상"].copy()
+
+        visible_cols = [c for c in VISIBLE_COLS if c in df_full.columns]
+        result_cols = visible_cols.copy()
+        if "라벨선택" in df_full.columns:
+            result_cols.append("라벨선택")
+
+        df_result_view = df_full[result_cols].copy()
+        if "라벨선택" in df_result_view.columns:
+            df_result_view["라벨선택"] = (
+                df_result_view["라벨선택"].fillna(False).astype(bool)
+            )
+
+        st.markdown("#### 계산 결과 (보기용)")
+        df_result_edit = st.data_editor(
+            df_result_view,
+            use_container_width=True,
+            num_rows="fixed",
+            hide_index=True,
+            column_config={
+                "라벨선택": st.column_config.CheckboxColumn(
+                    "라벨선택", default=False
+                )
+            },
+            key="return_result_editor",
+        )
+
+        if "라벨선택" in df_result_edit.columns:
+            df_full["라벨선택"] = (
+                df_result_edit["라벨선택"].fillna(False).astype(bool)
+            )
+
+        st.session_state["환입재고예상"] = df_full
+
 
         # -------------------------------------------------
         # 5) 공통부자재: 기본수주 + 추가수주까지 포함해서 재계산
