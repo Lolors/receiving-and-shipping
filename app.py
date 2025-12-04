@@ -1936,7 +1936,7 @@ if menu == "↩️ 환입 관리":
             df_visible,
             use_container_width=True,
             num_rows="fixed",      # 행 개수 고정
-            hide_index=True,       # 인덱스 클릭으로 포커스 뺏기는 것 방지
+            hide_index=True,       # 인덱스 숨김
             column_config={
                 "공통부자재": st.column_config.CheckboxColumn(
                     "공통부자재",
@@ -1946,7 +1946,7 @@ if menu == "↩️ 환입 관리":
             key="return_editor",
         )
 
-        # 에디터에서 수정된 값들 df_full에 반영
+        # ✅ 에디터에서 수정된 값들 df_full에 반영
         if "공통부자재" in df_edit.columns:
             df_full.loc[df_edit.index, "공통부자재"] = (
                 df_edit["공통부자재"].fillna(False).astype(bool)
@@ -1954,8 +1954,11 @@ if menu == "↩️ 환입 관리":
         if "추가수주" in df_edit.columns:
             df_full.loc[df_edit.index, "추가수주"] = df_edit["추가수주"].astype(str)
 
-        # 다시 한 번 bool 고정 (사용자 입력 반영 후)
+        # 다시 한 번 bool 고정
         df_full["공통부자재"] = df_full["공통부자재"].fillna(False).astype(bool)
+
+        # 🔴 여기 한 줄 추가: 편집 결과를 항상 세션에 저장 (버튼 안 눌러도 유지)
+        st.session_state["환입재고예상"] = df_full
 
         # -------------------------------------------------
         # 3) 입고기간이 입력된 행은 '기간 + 품번' 기준으로 실물입고 재계산
