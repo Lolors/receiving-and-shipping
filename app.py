@@ -2097,9 +2097,13 @@ if menu == "↩️ 환입 관리":
                         recompute_row_with_extra_orders, axis=1
                     )
 
+                # 🔚 최종값 저장 후 즉시 다시 렌더 → 1번 클릭에도 결과 보이게
                 st.session_state["환입재고예상"] = df_full
-                st.success("공통부자재로 선택된 행에 대해, 추가수주 자동 채우기 + 예상재고 재계산을 완료했습니다.")
+                import streamlit as st  # 이미 위에 있으면 생략
+                st.rerun()
+
             else:
+                # 저장 버튼만 눌렀을 때
                 st.success("공통부자재 / 추가수주 변경 내용을 저장했습니다.")
 
         # -------------------------------------------------
