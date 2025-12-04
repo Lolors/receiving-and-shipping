@@ -1936,9 +1936,17 @@ if menu == "↩️ 환입 관리":
         df_edit = st.data_editor(
             df_visible,
             use_container_width=True,
-            num_rows="dynamic",
+            num_rows="fixed",          # ✅ 행 개수 고정 (불필요한 빈 행/리렌더 줄이기)
+            hide_index=True,           # ✅ 인덱스 칼럼 클릭 때문에 첫 클릭이 씹히는 것 방지
+            column_config={
+                "공통부자재": st.column_config.CheckboxColumn(
+                    "공통부자재",
+                    default=False,
+                )
+            },
             key="return_editor",
         )
+
 
         # 에디터에서 수정된 값들 df_full에 반영
         for col in ["공통부자재", "입고시작일", "입고종료일", "추가수주"]:
