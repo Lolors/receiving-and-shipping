@@ -1994,9 +1994,11 @@ if menu == "↩️ 환입 관리":
 
         df_full = df_full.apply(apply_real_in_by_period, axis=1)
 
+
         # -------------------------------------------------
         # 4) 버튼: 공통부자재 + 입고기간 기준으로 추가수주 자동 채우기
         #    ✅ 공통부자재 == True 인 행만 대상으로
+        #    ✅ 이 버튼을 눌렀을 때만 추가수주 + 재계산 수행
         # -------------------------------------------------
         if st.button("🔄 입고기간 기준으로 추가수주 자동 채우기", key="btn_auto_extra_orders"):
             # 공통부자재 체크된 행만 대상
@@ -2005,6 +2007,7 @@ if menu == "↩️ 환입 관리":
             else:
                 target_idx = df_full.index  # 혹시 컬럼 없으면 전체 (백업용)
 
+            # -------- 4-1) 추가수주 자동 채우기 --------
             for idx in target_idx:
                 row = df_full.loc[idx]
                 part = row.get("품번", None)
@@ -2032,7 +2035,94 @@ if menu == "↩️ 환입 관리":
                 else:
                     df_full.at[idx, "추가수주"] = extra
 
-            st.success("공통부자재로 선택된 행에 대해서만, 입고기간 기준 추가수주 번호를 자동으로 채웠습니다.")
+            # -------- 4-2) 공통부자재 행 재계산 --------
+            aggs = st.session_state.get("aggregates", None)
+
+            if aggs is None:
+                st.warning("공통부자재 합산을 위해서는 먼저 '환입 데이터 불러오기' 버튼으로 집계를 만들어야 합니다.")
+            else:
+                import re
+
+                def recompute_row_with_extra_orders(row):
+                    part = str(row.get("품번", "")).strip()
+                    base_suju = str(row.get("수주번호", "")).strip()
+                    extra_text = str(row.get("추가수주", "")).strip()
+
+                    if not part or not base_suju:
+                        return row
+
+                    suju_list = [base_suju]
+                    if extra_text:
+                        extra_ids = [
+                            s.strip()
+                            for s in re.split(r"[ ,;/]+", extra_text)
+                            if s.strip()
+                        ]
+                        suju_list.extend(extra_ids)
+
+                    in_tbl = aggs.get("in")
+                    res_tbl = aggs.get("result")
+
+                    # 1) 입고 합계 (품번 + 수주번호)
+                    erp_out = 0.0
+                    real_in = safe_num(row.get("현장실물입고", 0))
+                    if isinstance(in_tbl, pd.DataFrame) and not in_tbl.empty:
+                        mask_in = (
+                            in_tbl["품번"].astype(str) == part
+                        ) & (
+                            in_tbl["수주번호"].astype(str).isin(suju_list)
+                        )
+                        tmp_in = in_tbl.loc[mask_in]
+                        if not tmp_in.empty:
+                            erp_out = tmp_in["ERP불출수량"].apply(safe_num).sum()
+                            real_in = tmp_in["현장실물입고"].apply(safe_num).sum()
+
+                    # 2) 생산/샘플 합계 (수주번호 기준)
+                    prod = safe_num(row.get("생산수량", 0))
+                    qc   = safe_num(row.get("QC샘플", 0))
+                    etc  = safe_num(row.get("기타샘플", 0))
+
+                    if (
+                        isinstance(res_tbl, pd.DataFrame)
+                        and not res_tbl.empty
+                        and "수주번호" in res_tbl.columns
+                    ):
+                        mask_res = res_tbl["수주번호"].astype(str).isin(suju_list)
+                        tmp_res = res_tbl.loc[mask_res]
+                        if not tmp_res.empty:
+                            if "생산수량" in tmp_res.columns:
+                                prod = tmp_res["생산수량"].apply(safe_num).sum()
+                            if "QC샘플" in tmp_res.columns:
+                                qc = tmp_res["QC샘플"].apply(safe_num).sum()
+                            if "기타샘플" in tmp_res.columns:
+                                etc = tmp_res["기타샘플"].apply(safe_num).sum()
+
+                    orig_def = safe_num(row.get("원불", 0))
+                    proc_def = safe_num(row.get("작불", 0))
+                    unit = safe_num(row.get("단위수량", 0))
+
+                    row["ERP불출수량"] = erp_out
+                    row["현장실물입고"] = real_in
+                    row["생산수량"] = prod
+                    row["QC샘플"] = qc
+                    row["기타샘플"] = etc
+
+                    row["예상재고"] = (
+                        real_in
+                        - (prod + qc + etc) * unit
+                        - orig_def
+                        - proc_def
+                    )
+
+                    return row
+
+                # ✅ 공통부자재 체크된 행만 재계산
+                df_full.loc[target_idx] = df_full.loc[target_idx].apply(
+                    recompute_row_with_extra_orders, axis=1
+                )
+
+            st.session_state["환입재고예상"] = df_full
+            st.success("공통부자재로 선택된 행에 대해, 추가수주 자동 채우기 + 예상재고 재계산을 완료했습니다.")
 
         # -------------------------------------------------
         # 5) 공통부자재: 기본수주 + 추가수주까지 포함해서 재계산
