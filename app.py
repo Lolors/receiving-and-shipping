@@ -2258,36 +2258,6 @@ if menu == "↩️ 환입 관리":
         # ✅ 여기까지 계산 끝난 df_full을 다시 세션에 저장
         st.session_state["환입재고예상"] = df_full
 
-        # -------------------------------------------------
-        # 6) 계산 결과 (보기용) - 여기에서만 라벨선택 노출 & 편집
-        # -------------------------------------------------
-        visible_cols = [c for c in VISIBLE_COLS if c in df_full.columns]
-
-        # 라벨선택은 VISIBLE_COLS에는 없으니, 뒤에 따로 붙여서 보여줌
-        result_cols = visible_cols.copy()
-        if "라벨선택" in df_full.columns:
-            result_cols.append("라벨선택")
-
-        df_result_view = df_full[result_cols].copy()
-        if "라벨선택" in df_result_view.columns:
-            df_result_view["라벨선택"] = df_full["라벨선택"].fillna(False)
-
-        st.markdown("#### 계산 결과 (보기용)")
-        df_result_edit = st.data_editor(
-            df_result_view,
-            use_container_width=True,
-            num_rows="dynamic",
-            key="return_result_editor",
-        )
-
-        # 계산 결과 화면에서 사용자가 체크한 라벨선택 값을 df_full에 반영
-        if "라벨선택" in df_result_edit.columns:
-            df_full.loc[df_result_edit.index, "라벨선택"] = df_result_edit["라벨선택"]
-
-        # 🔁 최종 df_full 다시 세션에 저장 (라벨선택 반영)
-        st.session_state["환입재고예상"] = df_full
-
-
         # ----------------------------------------------------
         # 🔽 여기부터는 기존 CSV / PDF / 라벨 로직 (df_full 기반)
         # ----------------------------------------------------
