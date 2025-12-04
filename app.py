@@ -1857,7 +1857,7 @@ if menu == "↩️ 환입 관리":
         st.write("환입 데이터 불러오기를 실행하면 이곳에 결과가 표시됩니다.")
     else:
         # -------------------------------------------------
-        # 0) df_full 기본 세팅 (계산용 원본)
+        # 0) df_full 기본 세팅
         # -------------------------------------------------
         df_full = df_full.copy().reset_index(drop=True)
 
@@ -1870,11 +1870,10 @@ if menu == "↩️ 환입 관리":
             if col not in df_full.columns:
                 df_full[col] = default
 
-        # bool 컬럼 정리
         for bcol in ["라벨선택", "공통부자재"]:
             df_full[bcol] = df_full[bcol].fillna(False).astype(bool)
 
-        # 계산용 최신 df_full 저장
+        # 최신 상태 세션에 반영
         st.session_state["환입재고예상"] = df_full
 
         # -------------------------------------------------
@@ -1893,10 +1892,10 @@ if menu == "↩️ 환입 관리":
             start_date = end_date = date_range
 
         # -------------------------------------------------
-        # 2) 화면에 보여줄 컬럼 구성
-        #   - 공통부자재: 맨 앞
-        #   - 수주번호 바로 뒤에 추가수주
-        #   - 라벨선택: 여기서는 안 보임 (뒤 계산 결과에서만)
+        # 2) data_editor 에서 쓸 표시 컬럼 구성
+        #    - 공통부자재: 맨 앞
+        #    - 수주번호 뒤에 추가수주
+        #    - 라벨선택: 여기서는 숨김
         # -------------------------------------------------
         base_cols = [c for c in VISIBLE_COLS if c in df_full.columns]
 
@@ -1905,7 +1904,7 @@ if menu == "↩️ 환입 관리":
         # 맨 앞 공통부자재
         display_cols.append("공통부자재")
 
-        # 그 다음 수주번호 / 추가수주 / 나머지
+        # 수주번호 / 추가수주 / 나머지
         if "수주번호" in base_cols:
             display_cols.append("수주번호")
             display_cols.append("추가수주")
@@ -1917,100 +1916,67 @@ if menu == "↩️ 환입 관리":
             if "추가수주" not in display_cols:
                 display_cols.append("추가수주")
 
-        # 라벨선택은 여기서는 숨김
+        # 라벨선택은 숨김
         if "라벨선택" in display_cols:
             display_cols.remove("라벨선택")
 
-        # -------------------------------------------------
-        # 2-1) data_editor 전용 DF를 session_state에 한 번만 만든다
-        #      👉 이 DF만 data_editor와 주고받고, df_full로부터 매번 새로 만들지 않는다
-        # -------------------------------------------------
-        editor_key = "return_editor_df"
-
-        def init_editor_df_from_full(df_source: pd.DataFrame) -> pd.DataFrame:
-            tmp = pd.DataFrame(index=df_source.index)
-            for c in display_cols:
-                if c in df_source.columns:
-                    tmp[c] = df_source[c]
-            # 타입 정리
-            if "공통부자재" in tmp.columns:
-                tmp["공통부자재"] = tmp["공통부자재"].fillna(False).astype(bool)
-            if "추가수주" in tmp.columns:
-                tmp["추가수주"] = tmp["추가수주"].astype(str)
-            return tmp
-
-        # 처음이거나, 행 수가 달라진 경우에만 새로 만든다
-        if editor_key not in st.session_state:
-            st.session_state[editor_key] = init_editor_df_from_full(df_full)
-        else:
-            ed_prev = st.session_state[editor_key]
-            if len(ed_prev) != len(df_full):
-                st.session_state[editor_key] = init_editor_df_from_full(df_full)
-
-        editor_df = st.session_state[editor_key]
-
-        # 혹시 display_cols에 있지만 editor_df에 없는 컬럼이 생기면 추가
+        # 화면용 DF
+        df_visible = pd.DataFrame(index=df_full.index)
         for c in display_cols:
-            if c not in editor_df.columns and c in df_full.columns:
-                editor_df[c] = df_full[c]
+            if c in df_full.columns:
+                df_visible[c] = df_full[c]
 
-        # 타입 한 번 더 정리
-        if "공통부자재" in editor_df.columns:
-            editor_df["공통부자재"] = editor_df["공통부자재"].fillna(False).astype(bool)
-        if "추가수주" in editor_df.columns:
-            editor_df["추가수주"] = editor_df["추가수주"].astype(str)
+        # 타입 정리
+        if "공통부자재" in df_visible.columns:
+            df_visible["공통부자재"] = df_visible["공통부자재"].fillna(False).astype(bool)
+        if "추가수주" in df_visible.columns:
+            df_visible["추가수주"] = df_visible["추가수주"].astype(str)
 
         # -------------------------------------------------
-        # 2-2) data_editor 렌더 (화면용 상태 전용)
-        #      👉 여기서 사용하는 DF는 오직 editor_df (session_state에 저장된 것)
+        # 2-1) ❗ data_editor를 form 안에 넣는다
+        #      → 체크해도 리런 안 일어나고, '저장' 눌렀을 때만 반영
         # -------------------------------------------------
-        df_edit = st.data_editor(
-            editor_df[display_cols],
-            use_container_width=True,
-            num_rows="fixed",
-            hide_index=True,
-            column_config={
-                "공통부자재": st.column_config.CheckboxColumn(
-                    "공통부자재", default=False
-                )
-            },
-            key="return_editor",
-        )
+        with st.form("return_editor_form"):
+            df_edit = st.data_editor(
+                df_visible,
+                use_container_width=True,
+                num_rows="fixed",
+                hide_index=True,
+                column_config={
+                    "공통부자재": st.column_config.CheckboxColumn(
+                        "공통부자재", default=False
+                    )
+                },
+                key="return_editor",
+            )
 
-        # 에디터 결과를 다시 editor_df에 저장 (df_full은 아직 건드리지 않음)
-        st.session_state[editor_key] = df_edit
+            save_clicked = st.form_submit_button("💾 공통부자재 / 추가수주 저장")
+
+        # 폼 저장 버튼 눌렀을 때만 df_full 에 반영
+        if save_clicked:
+            for col in ["공통부자재", "추가수주"]:
+                if col in df_edit.columns:
+                    df_full[col] = df_edit[col].reindex(df_full.index).values
+
+            # bool 다시 정리
+            df_full["공통부자재"] = df_full["공통부자재"].fillna(False).astype(bool)
+            st.session_state["환입재고예상"] = df_full
+            st.success("공통부자재 / 추가수주 변경 내용을 저장했습니다.")
 
         # -------------------------------------------------
         # 3) 버튼: 공통부자재 + 입고기간 기준으로 추가수주 자동 채우기
-        #    👉 버튼 누를 때에만 df_full을 갱신/재계산
+        #    → 여기서는 df_full (세션에 저장된 것)만 사용
         # -------------------------------------------------
+        df_full = st.session_state["환입재고예상"].copy()
+
         if st.button("🔄 입고기간 기준으로 추가수주 자동 채우기", key="btn_auto_extra_orders"):
-            # 최신 editor 상태 반영해서 df_full 업데이트
-            df_full = st.session_state["환입재고예상"].copy()
-            df_edit = st.session_state[editor_key]
-
-            # 공통부자재/추가수주 컬럼만 df_full에 복사
-            if "공통부자재" in df_edit.columns:
-                df_full["공통부자재"] = (
-                    df_edit["공통부자재"]
-                    .reindex(df_full.index)
-                    .fillna(False)
-                    .astype(bool)
-                )
-            if "추가수주" in df_edit.columns:
-                df_full["추가수주"] = (
-                    df_edit["추가수주"]
-                    .reindex(df_full.index)
-                    .astype(str)
-                )
-
             # 공통부자재 체크된 행만 대상
             if "공통부자재" in df_full.columns:
                 target_idx = df_full.index[df_full["공통부자재"] == True]
             else:
                 target_idx = df_full.index
 
-            # -------- 3-1) 추가수주 자동 채우기 --------
+            # 3-1) 추가수주 자동 채우기
             for idx in target_idx:
                 row = df_full.loc[idx]
                 part = row.get("품번", None)
@@ -2038,7 +2004,7 @@ if menu == "↩️ 환입 관리":
                 else:
                     df_full.at[idx, "추가수주"] = extra
 
-            # -------- 3-2) 공통부자재 행 재계산 --------
+            # 3-2) 공통부자재 행 재계산
             aggs = st.session_state.get("aggregates", None)
 
             if aggs is None:
@@ -2066,7 +2032,6 @@ if menu == "↩️ 환입 관리":
                     in_tbl = aggs.get("in")
                     res_tbl = aggs.get("result")
 
-                    # 1) 입고 합계 (품번 + 수주번호)
                     erp_out = 0.0
                     real_in = safe_num(row.get("현장실물입고", 0))
                     if isinstance(in_tbl, pd.DataFrame) and not in_tbl.empty:
@@ -2080,7 +2045,6 @@ if menu == "↩️ 환입 관리":
                             erp_out = tmp_in["ERP불출수량"].apply(safe_num).sum()
                             real_in = tmp_in["현장실물입고"].apply(safe_num).sum()
 
-                    # 2) 생산/샘플 합계 (수주번호 기준)
                     prod = safe_num(row.get("생산수량", 0))
                     qc   = safe_num(row.get("QC샘플", 0))
                     etc  = safe_num(row.get("기타샘플", 0))
@@ -2123,19 +2087,11 @@ if menu == "↩️ 환입 관리":
                     recompute_row_with_extra_orders, axis=1
                 )
 
-            # 계산 끝난 df_full 저장
             st.session_state["환입재고예상"] = df_full
-
-            # editor_df에도 최신 추가수주 반영 (체크박스 상태는 유지)
-            editor_df = st.session_state[editor_key].copy()
-            if "추가수주" in editor_df.columns:
-                editor_df["추가수주"] = df_full["추가수주"].astype(str)
-            st.session_state[editor_key] = editor_df
-
             st.success("공통부자재로 선택된 행에 대해, 추가수주 자동 채우기 + 예상재고 재계산을 완료했습니다.")
 
         # -------------------------------------------------
-        # 4) 계산 결과 (보기용) - 여기에서만 라벨선택 노출 & 편집
+        # 4) 계산 결과 (보기용) - 여기에서만 라벨선택 노출
         # -------------------------------------------------
         df_full = st.session_state["환입재고예상"].copy()
 
@@ -2157,9 +2113,7 @@ if menu == "↩️ 환입 관리":
             num_rows="fixed",
             hide_index=True,
             column_config={
-                "라벨선택": st.column_config.CheckboxColumn(
-                    "라벨선택", default=False
-                )
+                "라벨선택": st.column_config.CheckboxColumn("라벨선택", default=False)
             },
             key="return_result_editor",
         )
@@ -2169,93 +2123,6 @@ if menu == "↩️ 환입 관리":
                 df_result_edit["라벨선택"].fillna(False).astype(bool)
             )
 
-        st.session_state["환입재고예상"] = df_full
-
-
-        # -------------------------------------------------
-        # 5) 공통부자재: 기본수주 + 추가수주까지 포함해서 재계산
-        # -------------------------------------------------
-        aggs = st.session_state.get("aggregates", None)
-
-        if aggs is None:
-            st.warning("공통부자재 합산을 위해서는 먼저 '환입 데이터 불러오기' 버튼으로 집계를 만들어야 합니다.")
-        else:
-            import re
-
-            def recompute_row_with_extra_orders(row):
-                part = str(row.get("품번", "")).strip()
-                base_suju = str(row.get("수주번호", "")).strip()
-                extra_text = str(row.get("추가수주", "")).strip()
-
-                if not part or not base_suju:
-                    return row
-
-                suju_list = [base_suju]
-                if extra_text:
-                    extra_ids = [
-                        s.strip()
-                        for s in re.split(r"[ ,;/]+", extra_text)
-                        if s.strip()
-                    ]
-                    suju_list.extend(extra_ids)
-
-                in_tbl = aggs.get("in")
-                res_tbl = aggs.get("result")
-
-                erp_out = 0.0
-                real_in = safe_num(row.get("현장실물입고", 0))
-                if isinstance(in_tbl, pd.DataFrame) and not in_tbl.empty:
-                    mask_in = (
-                        in_tbl["품번"].astype(str) == part
-                    ) & (
-                        in_tbl["수주번호"].astype(str).isin(suju_list)
-                    )
-                    tmp_in = in_tbl.loc[mask_in]
-                    if not tmp_in.empty:
-                        erp_out = tmp_in["ERP불출수량"].apply(safe_num).sum()
-                        real_in = tmp_in["현장실물입고"].apply(safe_num).sum()
-
-                prod = safe_num(row.get("생산수량", 0))
-                qc   = safe_num(row.get("QC샘플", 0))
-                etc  = safe_num(row.get("기타샘플", 0))
-
-                if (
-                    isinstance(res_tbl, pd.DataFrame)
-                    and not res_tbl.empty
-                    and "수주번호" in res_tbl.columns
-                ):
-                    mask_res = res_tbl["수주번호"].astype(str).isin(suju_list)
-                    tmp_res = res_tbl.loc[mask_res]
-                    if not tmp_res.empty:
-                        if "생산수량" in tmp_res.columns:
-                            prod = tmp_res["생산수량"].apply(safe_num).sum()
-                        if "QC샘플" in tmp_res.columns:
-                            qc = tmp_res["QC샘플"].apply(safe_num).sum()
-                        if "기타샘플" in tmp_res.columns:
-                            etc = tmp_res["기타샘플"].apply(safe_num).sum()
-
-                orig_def = safe_num(row.get("원불", 0))
-                proc_def = safe_num(row.get("작불", 0))
-                unit = safe_num(row.get("단위수량", 0))
-
-                row["ERP불출수량"] = erp_out
-                row["현장실물입고"] = real_in
-                row["생산수량"] = prod
-                row["QC샘플"] = qc
-                row["기타샘플"] = etc
-
-                row["예상재고"] = (
-                    real_in
-                    - (prod + qc + etc) * unit
-                    - orig_def
-                    - proc_def
-                )
-
-                return row
-
-            df_full = df_full.apply(recompute_row_with_extra_orders, axis=1)
-
-        # ✅ 여기까지 계산 끝난 df_full을 다시 세션에 저장
         st.session_state["환입재고예상"] = df_full
 
         # ----------------------------------------------------
