@@ -1853,6 +1853,10 @@ if menu == "↩️ 환입 관리":
         "환입재고예상", pd.DataFrame(columns=CSV_COLS)
     )
 
+    # 🔑 항상 0,1,2,... 형태의 인덱스로 맞춰두기 (data_editor랑 동기화용)
+    df_full = df_full.copy().reset_index(drop=True)
+    st.session_state["환입재고예상"] = df_full
+
     if df_full.empty:
         st.write("환입 데이터 불러오기를 실행하면 이곳에 결과가 표시됩니다.")
     else:
@@ -1920,11 +1924,11 @@ if menu == "↩️ 환입 관리":
 
         # ⚠ 라벨선택은 여기서는 안 넣음 (계산 결과에서만 보여줌)
 
-        # 실제 화면용 DF 만들기 (원래 인덱스 유지)
-        df_visible = pd.DataFrame(index=df_full.index)
-        for c in display_cols:
-            if c in df_full.columns:
-                df_visible[c] = df_full[c]
+        # ✅ 인덱스를 그대로 쓰도록 슬라이싱
+        df_visible = df_full.copy()
+
+        # 우리가 보여주고 싶은 컬럼만 남겨두기
+        df_visible = df_visible[[c for c in display_cols if c in df_visible.columns]]
 
         # ✅ 타입 한 번 더 정리
         if "공통부자재" in df_visible.columns:
