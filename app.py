@@ -1871,9 +1871,10 @@ if menu == "↩️ 환입 관리":
             if col not in df_full.columns:
                 df_full[col] = default
 
-        # ✅ 체크박스 컬럼은 확실하게 bool 타입으로 고정
-        df_full["공통부자재"] = df_full["공통부자재"].fillna(False).astype(bool)
-        df_full["라벨선택"] = df_full["라벨선택"].fillna(False).astype(bool)
+        # ✅ bool 컬럼은 진짜 bool 타입으로 고정
+        for bcol in ["라벨선택", "공통부자재"]:
+            if bcol in df_full.columns:
+                df_full[bcol] = df_full[bcol].fillna(False).astype(bool)
 
         # -------------------------------------------------
         # 1) 추가수주 자동 채우기용 공통 입고기간 선택 (전체 공통)
@@ -1910,24 +1911,22 @@ if menu == "↩️ 환입 관리":
             display_cols.append("수주번호")
             display_cols.append("추가수주")
             for c in base_cols:
-                if c not in ["수주번호"]:  # 수주번호는 이미 넣었으니 제외
+                if c not in ["수주번호"]:
                     display_cols.append(c)
         else:
-            # 수주번호가 없을 일은 거의 없겠지만, 방어코드
             display_cols.extend(base_cols)
             if "추가수주" not in display_cols:
                 display_cols.append("추가수주")
 
-        # ⚠ 라벨선택은 여기서는 안 넣음 (계산 결과에서만 보여줄 거라서)
+        # ⚠ 라벨선택은 여기서는 안 넣음 (계산 결과에서만 보여줌)
 
-        # 실제 화면용 DF 만들기
+        # 실제 화면용 DF 만들기 (원래 인덱스 유지)
         df_visible = pd.DataFrame(index=df_full.index)
-
         for c in display_cols:
             if c in df_full.columns:
                 df_visible[c] = df_full[c]
 
-        # ✅ 공통부자재/추가수주는 타입 한 번 더 확실히
+        # ✅ 타입 한 번 더 정리
         if "공통부자재" in df_visible.columns:
             df_visible["공통부자재"] = df_full["공통부자재"].fillna(False).astype(bool)
         if "추가수주" in df_visible.columns:
@@ -1936,8 +1935,8 @@ if menu == "↩️ 환입 관리":
         df_edit = st.data_editor(
             df_visible,
             use_container_width=True,
-            num_rows="fixed",          # ✅ 행 개수 고정 (불필요한 빈 행/리렌더 줄이기)
-            hide_index=True,           # ✅ 인덱스 칼럼 클릭 때문에 첫 클릭이 씹히는 것 방지
+            num_rows="fixed",      # 행 개수 고정
+            hide_index=True,       # 인덱스 클릭으로 포커스 뺏기는 것 방지
             column_config={
                 "공통부자재": st.column_config.CheckboxColumn(
                     "공통부자재",
@@ -1947,11 +1946,13 @@ if menu == "↩️ 환입 관리":
             key="return_editor",
         )
 
-
         # 에디터에서 수정된 값들 df_full에 반영
-        for col in ["공통부자재", "입고시작일", "입고종료일", "추가수주"]:
-            if col in df_edit.columns:
-                df_full.loc[df_edit.index, col] = df_edit[col]
+        if "공통부자재" in df_edit.columns:
+            df_full.loc[df_edit.index, "공통부자재"] = (
+                df_edit["공통부자재"].fillna(False).astype(bool)
+            )
+        if "추가수주" in df_edit.columns:
+            df_full.loc[df_edit.index, "추가수주"] = df_edit["추가수주"].astype(str)
 
         # 다시 한 번 bool 고정 (사용자 입력 반영 후)
         df_full["공통부자재"] = df_full["공통부자재"].fillna(False).astype(bool)
@@ -1994,20 +1995,16 @@ if menu == "↩️ 환입 관리":
 
         df_full = df_full.apply(apply_real_in_by_period, axis=1)
 
-
         # -------------------------------------------------
         # 4) 버튼: 공통부자재 + 입고기간 기준으로 추가수주 자동 채우기
-        #    ✅ 공통부자재 == True 인 행만 대상으로
-        #    ✅ 이 버튼을 눌렀을 때만 추가수주 + 재계산 수행
         # -------------------------------------------------
         if st.button("🔄 입고기간 기준으로 추가수주 자동 채우기", key="btn_auto_extra_orders"):
-            # 공통부자재 체크된 행만 대상
             if "공통부자재" in df_full.columns:
                 target_idx = df_full.index[df_full["공통부자재"] == True]
             else:
-                target_idx = df_full.index  # 혹시 컬럼 없으면 전체 (백업용)
+                target_idx = df_full.index
 
-            # -------- 4-1) 추가수주 자동 채우기 --------
+            # 4-1) 추가수주 자동 채우기
             for idx in target_idx:
                 row = df_full.loc[idx]
                 part = row.get("품번", None)
@@ -2035,7 +2032,7 @@ if menu == "↩️ 환입 관리":
                 else:
                     df_full.at[idx, "추가수주"] = extra
 
-            # -------- 4-2) 공통부자재 행 재계산 --------
+            # 4-2) 공통부자재 행 재계산
             aggs = st.session_state.get("aggregates", None)
 
             if aggs is None:
@@ -2116,7 +2113,6 @@ if menu == "↩️ 환입 관리":
 
                     return row
 
-                # ✅ 공통부자재 체크된 행만 재계산
                 df_full.loc[target_idx] = df_full.loc[target_idx].apply(
                     recompute_row_with_extra_orders, axis=1
                 )
