@@ -547,12 +547,29 @@ def recalc_return_expectation(df_return, aggs):
         on="지시번호",
     )
 
-    # 3) 생산실적 집계 붙이기 (수주번호 기준: 생산수량 / QC / 기타샘플)
-    df = df.merge(
-        aggs["result"],
-        how="left",
-        on="수주번호",
-    )
+    # 3) 생산실적 집계 붙이기
+    res_tbl = aggs["result"]
+
+    # 새 방식: 지시번호(작지번호) 기준 집계가 되어 있는 경우
+    if isinstance(res_tbl, pd.DataFrame) and not res_tbl.empty and "지시번호" in res_tbl.columns:
+        merge_cols = ["지시번호"]
+        for c in ["생산수량", "QC샘플", "기타샘플"]:
+            if c in res_tbl.columns:
+                merge_cols.append(c)
+
+        df = df.merge(
+            res_tbl[merge_cols],
+            how="left",
+            on="지시번호",
+        )
+    else:
+        # 혹시라도 지시번호 집계가 안 되어 있는 구버전 구조일 때는
+        # 기존대로 수주번호 기준으로 붙이도록 fallback
+        df = df.merge(
+            res_tbl,
+            how="left",
+            on="수주번호",
+        )
 
     # 4) 불량 집계 붙이기
     df = df.merge(
