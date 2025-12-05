@@ -339,8 +339,15 @@ def build_aggregates(df_in_raw, df_job_raw, df_result_raw, df_defect_raw, df_sto
     else:
         aggregates["job"] = pd.DataFrame(columns=["지시번호", "지시수량"])
 
-    # === 3) 생산실적 집계: 수주번호별 양품 / QC샘플 / 기타샘플 합계 ===
-    # 수주번호: 보통 "수주번호" 컬럼 사용
+    # === 3) 생산실적 집계: 지시번호(작지번호)별 양품 / QC샘플 / 기타샘플 합계 ===
+    # 작지번호: 보통 "작지번호" 컬럼 사용 (A열)
+    res_jisi_col = (
+        "작지번호"
+        if "작지번호" in df_result_raw.columns
+        else pick_col(df_result_raw, "A", ["작지번호", "지시번호"])
+    )
+
+    # 수주번호: 있으면 같이 들고만 다니다가 필요할 때 사용
     res_suju_col = (
         "수주번호"
         if "수주번호" in df_result_raw.columns
@@ -358,9 +365,13 @@ def build_aggregates(df_in_raw, df_job_raw, df_result_raw, df_defect_raw, df_sto
     res_qc_col = pick_col(df_result_raw, "AG", ["QC샘플"])
     res_etc_col = pick_col(df_result_raw, "AH", ["기타샘플"])
 
-    # 최소한 수주번호는 있어야 집계 가능
-    if res_suju_col:
-        use_cols = [res_suju_col]
+    # 최소한 지시번호(작지번호)나 수주번호 둘 중 하나는 있어야 집계 가능
+    if res_jisi_col or res_suju_col:
+        use_cols = []
+        if res_jisi_col:
+            use_cols.append(res_jisi_col)
+        if res_suju_col:
+            use_cols.append(res_suju_col)
         if res_good_col:
             use_cols.append(res_good_col)
         if res_qc_col:
@@ -370,7 +381,12 @@ def build_aggregates(df_in_raw, df_job_raw, df_result_raw, df_defect_raw, df_sto
 
         df_res = df_result_raw[use_cols].copy()
 
-        rename_map = {res_suju_col: "수주번호"}
+        # 컬럼명 통일
+        rename_map = {}
+        if res_jisi_col:
+            rename_map[res_jisi_col] = "지시번호"
+        if res_suju_col:
+            rename_map[res_suju_col] = "수주번호"
         if res_good_col:
             rename_map[res_good_col] = "생산수량"
         if res_qc_col:
@@ -380,18 +396,39 @@ def build_aggregates(df_in_raw, df_job_raw, df_result_raw, df_defect_raw, df_sto
 
         df_res = df_res.rename(columns=rename_map)
 
-        # NaN → 0 처리 후 수주번호 기준 합계
+        # NaN → 0 처리
         for col in ["생산수량", "QC샘플", "기타샘플"]:
             if col in df_res.columns:
                 df_res[col] = df_res[col].apply(safe_num)
 
-        agg_res = df_res.groupby("수주번호", as_index=False).agg("sum")
+        # ✅ 기준 키: 지시번호가 있으면 지시번호로, 없으면 기존처럼 수주번호로
+        group_keys = []
+        if "지시번호" in df_res.columns:
+            group_keys.append("지시번호")
+        elif "수주번호" in df_res.columns:
+            group_keys.append("수주번호")
 
+        # 집계 방식 정의
+        agg_dict = {}
+        for col in df_res.columns:
+            if col in group_keys:
+                continue
+            if col in ["생산수량", "QC샘플", "기타샘플"]:
+                agg_dict[col] = "sum"
+            elif col == "수주번호" and "지시번호" in group_keys:
+                # 지시번호 기준으로 묶을 때 수주번호는 대표값 하나만
+                agg_dict[col] = "first"
+            else:
+                agg_dict[col] = "first"
+
+        agg_res = df_res.groupby(group_keys, as_index=False).agg(agg_dict)
         aggregates["result"] = agg_res
     else:
+        # 둘 다 없으면 빈 DF
         aggregates["result"] = pd.DataFrame(
-            columns=["수주번호", "생산수량", "QC샘플", "기타샘플"]
+            columns=["지시번호", "수주번호", "생산수량", "QC샘플", "기타샘플"]
         )
+
 
     # === 4) 불량 집계: [지시번호, 품번]별 원불/작불 수량 ===
     def_jisi_col = (
