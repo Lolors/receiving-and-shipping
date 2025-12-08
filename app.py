@@ -1113,6 +1113,7 @@ if menu == "📦 입고 조회":
         mask = (df_in[req_date_col] >= start_date) & (df_in[req_date_col] <= end_date)
 
         # 각 열 컬럼 찾기
+        col_process  = pick_col(df_in, "J", ["생산공정"])
         col_req_no   = pick_col(df_in, "L", ["요청번호"])
         col_part     = pick_col(df_in, "M", ["품번"])
         col_name     = pick_col(df_in, "O", ["품명"])
@@ -1120,7 +1121,9 @@ if menu == "📦 입고 조회":
         col_erp_out  = pick_col(df_in, "Q", ["ERP불출수량", "불출수량"])
         col_real_in  = pick_col(df_in, "R", ["현장실물입고"])
 
+        # 👉 화면에 보여줄 컬럼 순서: 생산공정 → 요청날짜 → 나머지
         raw_cols = [c for c in [
+            col_process,
             req_date_col,
             col_req_no,
             col_part,
@@ -1138,6 +1141,7 @@ if menu == "📦 입고 조회":
             # 보기 좋게 컬럼명 한글로 맞추기
             rename_map = {}
             rename_map[req_date_col] = "요청날짜"
+            if col_process: rename_map[col_process] = "생산공정"
             if col_req_no:  rename_map[col_req_no]  = "요청번호"
             if col_part:    rename_map[col_part]    = "품번"
             if col_name:    rename_map[col_name]    = "품명"
@@ -1377,6 +1381,9 @@ if menu == "🔍 수주 찾기":
                             job_jisi_col = pick_col(
                                 df_job_raw, "B", ["지시번호"]
                             )
+                            job_date_col = pick_col(
+                                df_job_raw, "I", ["지시일자", "작지일자"]
+                            )
                             job_name_col = pick_col(
                                 df_job_raw, "L", ["품명", "완성품명"]
                             )
@@ -1389,19 +1396,19 @@ if menu == "🔍 수주 찾기":
                                 )
                             else:
                                 # 3) 필요한 컬럼만 가져오기
-                                df_job_map = df_job_raw[
-                                    [job_suju_col, job_jisi_col, job_name_col]
-                                ].copy()
-                                df_job_map.columns = [
-                                    "수주번호",
-                                    "지시번호",
-                                    "품명",
-                                ]
+                                use_cols = [job_suju_col, job_jisi_col]
+                                if job_date_col:
+                                    use_cols.append(job_date_col)
+                                use_cols.append(job_name_col)
 
-                                # 문자열 매칭을 위해 변환
-                                df_job_map["수주번호_str"] = (
-                                    df_job_map["수주번호"].astype(str)
-                                )
+                                df_job_map = df_job_raw[use_cols].copy()
+                                
+                                # 컬럼명 통일
+                                new_cols = ["수주번호", "지시번호"]
+                                if job_date_col:
+                                    new_cols.append("지시일자")
+                                new_cols.append("품명")
+                                df_job_map.columns = new_cols
 
                                 # 4) 수주찾기에서 나온 수주번호 목록과 일치하는 행 필터링
                                 df_job_filtered = df_job_map[
@@ -1411,9 +1418,7 @@ if menu == "🔍 수주 찾기":
                                 ].drop(columns=["수주번호_str"])
 
                                 if df_job_filtered.empty:
-                                    st.info(
-                                        "작업지시 시트에서 해당 수주번호의 지시번호/품명을 찾지 못했습니다."
-                                    )
+                                    ...
                                 else:
                                     # 중복 제거
                                     df_job_filtered = df_job_filtered.drop_duplicates(
@@ -1423,12 +1428,17 @@ if menu == "🔍 수주 찾기":
                                     st.markdown(
                                         "#### 수주번호별 지시번호 / 품명 (작업지시 기준)"
                                     )
+
+                                    display_cols = ["수주번호", "지시번호"]
+                                    if "지시일자" in df_job_filtered.columns:
+                                        display_cols.append("지시일자")
+                                    display_cols.append("품명")
+
                                     st.dataframe(
-                                        df_job_filtered[
-                                            ["수주번호", "지시번호", "품명"]
-                                        ],
+                                        df_job_filtered[display_cols],
                                         use_container_width=True,
                                     )
+
 
 # ============================================================
 # ↩️ 4. 환입 관리 화면 (+ 환입 예상재고)
