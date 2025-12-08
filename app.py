@@ -1432,6 +1432,21 @@ if menu == "🔍 수주 찾기":
                                         subset=subset_cols
                                     )
 
+                                    # 🔽 지시일자가 최근일수록 위쪽에 오도록 정렬
+                                    if "지시일자" in df_job_filtered.columns:
+                                        df_job_filtered["_지시일자_sort"] = pd.to_datetime(
+                                            df_job_filtered["지시일자"], errors="coerce"
+                                        )
+                                        df_job_filtered = df_job_filtered.sort_values(
+                                            by=["_지시일자_sort", "지시번호"],
+                                            ascending=[False, True],
+                                        ).drop(columns=["_지시일자_sort"])
+                                    else:
+                                        # 지시일자가 없으면 지시번호 기준 오름차순
+                                        df_job_filtered = df_job_filtered.sort_values(
+                                            by=["지시번호"]
+                                        )
+
                                     st.markdown(
                                         "#### 수주번호별 지시번호 / 품명 (작업지시 기준)"
                                     )
@@ -1445,7 +1460,6 @@ if menu == "🔍 수주 찾기":
                                         df_job_filtered[display_cols],
                                         use_container_width=True,
                                     )
-
 
 
 # ============================================================
