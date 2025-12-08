@@ -1270,73 +1270,8 @@ if menu == "🔍 수주 찾기":
                                     "2차 상위 품목코드로 BOM 품번(C열)을 재검색해도 "
                                     "관련 품목을 찾지 못했습니다."
                                 )
-
-                                used_bom2_flow = True  # 아래 기본 수주 검색 로직 비활성화
-
-                                # 🔎 2차 품목코드를 작업지시 시트의 품번(K열)에서 검색
-                                job_part_col = pick_col(df_job_raw, "K", ["품번", "품목코드"])
-                                job_suju_col = pick_col(df_job_raw, "A", ["수주번호"])
-                                job_jisi_col = pick_col(df_job_raw, "B", ["지시번호"])
-                                job_date_col = pick_col(df_job_raw, "I", ["지시일자", "작지일자"])
-                                job_name_col = pick_col(df_job_raw, "L", ["품명", "완성품명"])
-
-                                if not all([job_part_col, job_suju_col, job_jisi_col, job_name_col]):
-                                    st.warning(
-                                        "작업지시 시트에서 품번(K), 수주번호(A), 지시번호(B), 품명(L)을 찾지 못했습니다."
-                                    )
-                                    df_show = pd.DataFrame()
-                                else:
-                                    df_job_hit = df_job_raw[
-                                        df_job_raw[job_part_col].isin(fallback_item_codes)
-                                    ].copy()
-
-                                    if df_job_hit.empty:
-                                        st.warning(
-                                            "2차 상위 품목코드로 작업지시 시트에서 관련 지시를 찾지 못했습니다."
-                                        )
-                                        df_show = pd.DataFrame()
-                                    else:
-                                        # 필요한 컬럼만 추출
-                                        use_cols = [job_suju_col, job_jisi_col]
-                                        if job_date_col:
-                                            use_cols.append(job_date_col)
-                                        use_cols.append(job_name_col)
-
-                                        df_job_view = df_job_hit[use_cols].copy()
-
-                                        # 컬럼명 통일
-                                        new_cols = ["수주번호", "지시번호"]
-                                        if job_date_col:
-                                            new_cols.append("지시일자")
-                                        new_cols.append("품명")
-                                        df_job_view.columns = new_cols
-
-                                        # 정렬: 지시일자 최신순 → 지시번호 오름차순
-                                        if "지시일자" in df_job_view.columns:
-                                            df_job_view["_sort"] = pd.to_datetime(
-                                                df_job_view["지시일자"], errors="coerce"
-                                            )
-                                            df_job_view = df_job_view.sort_values(
-                                                by=["_sort", "지시번호"],
-                                                ascending=[False, True],
-                                            ).drop(columns=["_sort"])
-                                        else:
-                                            df_job_view = df_job_view.sort_values(by=["지시번호"])
-
-                                        st.markdown(
-                                            "#### 2차 상위 품목코드 기준 작업지시 정보 (품번→수주번호 기준)"
-                                        )
-
-                                        disp_cols = ["수주번호", "지시번호"]
-                                        if "지시일자" in df_job_view.columns:
-                                            disp_cols.append("지시일자")
-                                        disp_cols.append("품명")
-
-                                        st.dataframe(df_job_view[disp_cols], use_container_width=True)
-
-                                        df_show = pd.DataFrame()  # 아래 기본 로직 비활성화
-
-                            if df_suju_hit.empty and fallback_item_codes:
+                                df_show = pd.DataFrame()
+                            else:
                                 # 3차(더 상위) 완성품 품목코드 목록
                                 third_item_codes = (
                                     df_bom_from_lvl2[bom_item_col]
