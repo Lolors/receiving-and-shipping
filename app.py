@@ -1244,15 +1244,48 @@ if menu == "🔍 수주 찾기":
                                 fallback_item_codes.update(lvl2)
 
                         fallback_item_codes = list(fallback_item_codes)
-                        st.info("1차 품목코드로는 없어, 2차 상위 품목코드로 재검색합니다.")
-                        st.write("2차 품목코드:", fallback_item_codes)
 
-                        df_suju_hit = df_suju[
-                            df_suju[suju_part_col].isin(fallback_item_codes)
-                        ].copy()
+                        if fallback_item_codes:
+                            st.info("1차 품목코드로는 없어, 2차 상위 품목코드로 재검색합니다.")
+                            st.write("2차 품목코드:", fallback_item_codes)
 
+                            df_suju_hit = df_suju[
+                                df_suju[suju_part_col].isin(fallback_item_codes)
+                            ].copy()
+
+                    # ✅ 2차 상위 품목코드로도 수주가 없을 때 → BOM C열(품번) 재검색
                     if df_suju_hit.empty:
-                        st.warning("해당 품목코드로 수주 시트에서 검색된 수주가 없습니다.")
+                        # fallback_item_codes 가 있는 경우에만 수행
+                        if "fallback_item_codes" in locals() and fallback_item_codes:
+                            df_bom_from_lvl2 = df_bom[
+                                df_bom[bom_component_col].isin(fallback_item_codes)
+                            ].copy()
+
+                            if df_bom_from_lvl2.empty:
+                                st.warning(
+                                    "1차 품목코드, 2차 상위 품목코드, "
+                                    "그리고 2차 상위 품목코드로 BOM 품번(C열)까지 검색했지만 "
+                                    "수주 시트에서 관련 수주를 찾지 못했습니다."
+                                )
+                            else:
+                                st.warning(
+                                    "수주 시트에서는 찾지 못했지만, "
+                                    "2차 상위 품목코드로 BOM 품번(C열)에서 아래 품목들을 찾았습니다."
+                                )
+
+                                # BOM에서 보여줄 컬럼만 정리
+                                df_bom_view = df_bom_from_lvl2[
+                                    [bom_item_col, bom_name_col, bom_component_col]
+                                ].copy()
+                                df_bom_view.columns = ["품목코드", "품명", "품번(C열)"]
+
+                                st.dataframe(
+                                    df_bom_view,
+                                    use_container_width=True,
+                                )
+                        else:
+                            # 2차 상위 품목코드 자체가 없는 경우 (fallback도 없음)
+                            st.warning("해당 품목코드로 수주 시트에서 검색된 수주가 없습니다.")
                     else:
                         # === 검색 범위 설정 ===
                         one_month_after = today + timedelta(days=30)
@@ -1341,6 +1374,7 @@ if menu == "🔍 수주 찾기":
                                                 "과거 12개월까지도 해당 품목코드의 수주가 없습니다."
                                             )
                                             df_show = pd.DataFrame()
+
 
                         # ===== 결과 표시 =====
                         if not df_show.empty:
