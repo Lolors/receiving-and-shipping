@@ -1410,6 +1410,9 @@ if menu == "🔍 수주 찾기":
                                 new_cols.append("품명")
                                 df_job_map.columns = new_cols
 
+                                # 🔥 필수: 문자열 비교를 위한 컬럼 생성
+                                df_job_map["수주번호_str"] = df_job_map["수주번호"].astype(str)
+
                                 # 4) 수주찾기에서 나온 수주번호 목록과 일치하는 행 필터링
                                 df_job_filtered = df_job_map[
                                     df_job_map["수주번호_str"].isin(
@@ -1421,8 +1424,12 @@ if menu == "🔍 수주 찾기":
                                     ...
                                 else:
                                     # 중복 제거
+                                    subset_cols = ["수주번호", "지시번호", "품명"]
+                                    if "지시일자" in df_job_filtered.columns:
+                                        subset_cols = ["수주번호", "지시번호", "지시일자", "품명"]
+
                                     df_job_filtered = df_job_filtered.drop_duplicates(
-                                        subset=["수주번호", "지시번호", "품명"]
+                                        subset=subset_cols
                                     )
 
                                     st.markdown(
@@ -1438,6 +1445,7 @@ if menu == "🔍 수주 찾기":
                                         df_job_filtered[display_cols],
                                         use_container_width=True,
                                     )
+
 
 
 # ============================================================
