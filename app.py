@@ -2,9 +2,12 @@
 import streamlit as st
 import pandas as pd
 from datetime import date, timedelta
+import tempfile
 import io
 import os
 from html import escape
+import sqlite3
+from pathlib import Path
 
 # ============ S3 연동 ============
 
@@ -12,7 +15,8 @@ import boto3
 from botocore.exceptions import ClientError
 
 S3_BUCKET = "rec-and-ship"
-S3_KEY = "bulk-ledger.xlsx"  # 항상 이 이름으로 저장/불러오기
+S3_KEY_EXCEL = "bulk-ledger.xlsx"   # 기존 엑셀
+S3_KEY_DB    = "inout.db"           # 새로 만들 SQLite DB 파일명
 
 def get_s3_client():
     try:
@@ -28,13 +32,14 @@ def get_s3_client():
 
 s3_client = get_s3_client()
 
+
 @st.cache_data(show_spinner=True)
 def load_file_from_s3():
-    """S3에 파일이 있으면 bytes로 읽어온다."""
+    """S3에 엑셀 파일이 있으면 bytes로 읽어온다."""
     if s3_client is None:
         return None
     try:
-        obj = s3_client.get_object(Bucket=S3_BUCKET, Key=S3_KEY)
+        obj = s3_client.get_object(Bucket=S3_BUCKET, Key=S3_KEY_EXCEL)  # 🔴 여기 S3_KEY → S3_KEY_EXCEL 로 수정
         return obj["Body"].read()
     except ClientError as e:
         code = e.response["Error"]["Code"]
@@ -42,6 +47,70 @@ def load_file_from_s3():
             return None
         st.error(f"S3에서 파일을 가져오는 중 오류가 발생했습니다: {e}")
         return None
+
+
+# 🔹🔹🔹 여기 아래에 새 함수 2개 추가 🔹🔹🔹
+
+@st.cache_data(show_spinner=True)
+def load_db_from_s3() -> bytes | None:
+    """S3에서 inout.db 파일을 바이트로 읽어서 반환"""
+    if s3_client is None:
+        return None
+    try:
+        obj = s3_client.get_object(Bucket=S3_BUCKET, Key=S3_KEY_DB)
+        return obj["Body"].read()
+    except ClientError as e:
+        code = e.response["Error"]["Code"]
+        if code in ("NoSuchKey", "404"):
+            return None
+        st.error(f"S3 DB 로딩 오류: {e}")
+        return None
+
+
+# 엑셀 DB 변환 함수 추가
+@st.cache_resource(show_spinner=True)
+def get_db_connection(db_bytes: bytes):
+    """
+    S3에서 받은 DB bytes를 임시파일로 저장 후 SQLite 연결하기.
+    Streamlit 세션 동안 재사용된다.
+    """
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
+    tmp.write(db_bytes)
+    tmp.flush()
+    conn = sqlite3.connect(tmp.name, check_same_thread=False)
+    return conn
+
+REQUIRED_SHEETS = ["입고", "작업지시", "수주", "BOM", "재고", "생산실적", "불량"]
+
+def excel_bytes_to_sqlite_bytes(excel_bytes: bytes) -> bytes:
+    """
+    업로드된 엑셀 바이트 → SQLite DB 파일(in 메모리)로 변환해서 bytes로 리턴
+    """
+    # 1) 엑셀 전체 읽기 (업로드 시 1번만 실행되니 괜찮음)
+    xls = pd.ExcelFile(io.BytesIO(excel_bytes))
+
+    # 2) 임시 DB 파일 생성
+    tmp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
+    conn = sqlite3.connect(tmp_db.name)
+
+    try:
+        # 3) 각 시트를 동일 이름의 테이블로 저장
+        for sheet in REQUIRED_SHEETS:
+            if sheet not in xls.sheet_names:
+                continue
+            df = pd.read_excel(xls, sheet_name=sheet)
+            df.to_sql(sheet, conn, if_exists="replace", index=False)
+
+        conn.commit()
+    finally:
+        conn.close()
+
+    # 4) 완성된 DB 파일을 bytes로 읽어서 반환
+    with open(tmp_db.name, "rb") as f:
+        db_bytes = f.read()
+
+    return db_bytes
+
 
 # PDF 생성용 (reportlab 없는 환경에서도 앱이 죽지 않도록 처리)
 try:
@@ -1011,7 +1080,7 @@ menu = st.radio(
 )
 
 # ==========================================
-# 📤 1. 파일 업로드 탭 (S3에 저장)
+# 📤 1. 파일 업로드 탭 (S3에 엑셀 + DB 저장)
 # ==========================================
 if menu == "📤 파일 업로드":
     st.subheader("📤 2025년 부자재 관리대장 업로드")
@@ -1020,47 +1089,79 @@ if menu == "📤 파일 업로드":
 
     if uploaded_file and s3_client is not None:
         try:
-            s3_client.upload_fileobj(uploaded_file, S3_BUCKET, S3_KEY)
-            # 캐시 초기화
+            # 1) 업로드된 파일 전체를 bytes로 읽기
+            file_bytes = uploaded_file.read()
+
+            # 2) 엑셀 원본을 S3에 저장 (백업/원본 용도)
+            s3_client.put_object(
+                Bucket=S3_BUCKET,
+                Key=S3_KEY_EXCEL,
+                Body=file_bytes,
+            )
+
+            # 3) 엑셀 → SQLite DB 변환
+            db_bytes = excel_bytes_to_sqlite_bytes(file_bytes)
+
+            # 4) 변환된 DB를 S3에 저장
+            s3_client.put_object(
+                Bucket=S3_BUCKET,
+                Key=S3_KEY_DB,
+                Body=db_bytes,
+            )
+
+            # 5) 캐시 초기화
+            load_db_from_s3.clear()
             load_file_from_s3.clear()
+            # (load_excel은 이제 안 써도 되지만 혹시 몰라 같이 비워 둠)
             load_excel.clear()
-            st.success("S3 업로드 완료! 다른 탭에서 데이터 조회 가능합니다.")
+
+            st.success("엑셀과 DB를 S3에 모두 업로드했습니다. 다른 탭에서 빠르게 조회할 수 있어요.")
         except Exception as e:
-            st.error(f"S3 업로드 중 오류 발생: {e}")
+            st.error(f"S3 업로드/DB 변환 중 오류 발생: {e}")
+
     elif uploaded_file and s3_client is None:
         st.error("S3 클라이언트가 초기화되지 않았습니다. secrets 설정을 확인해주세요.")
 
     st.stop()  # 업로드 탭에서는 여기서 종료
 
 
+
 # ==========================================
-# 나머지 탭: S3에서 파일 로딩
+# 나머지 탭: S3에서 DB 로딩
 # ==========================================
-file_bytes = load_file_from_s3()
-if file_bytes is None:
-    st.warning("S3에 업로드된 관리대장 파일이 없습니다. 먼저 [📤 파일 업로드] 탭에서 파일을 올려주세요.")
+db_bytes = load_db_from_s3()
+if db_bytes is None:
+    st.warning("S3에 업로드된 DB 파일이 없습니다. 먼저 [📤 파일 업로드] 탭에서 파일을 올려주세요.")
     st.stop()
 
-sheets = load_excel(file_bytes)
+# S3에서 받은 DB bytes로 SQLite 연결
+conn = get_db_connection(db_bytes)
 
-# 필수 시트 체크
-required_sheets = ["입고", "작업지시", "수주", "BOM", "재고", "생산실적", "불량"]
-missing = [s for s in required_sheets if s not in sheets]
+# 필수 테이블 존재 여부 체크
+required_tables = ["입고", "작업지시", "수주", "BOM", "재고", "생산실적", "불량"]
+tables_df = pd.read_sql(
+    "SELECT name FROM sqlite_master WHERE type='table';",
+    conn,
+)
+existing_tables = set(tables_df["name"].tolist())
+missing = [t for t in required_tables if t not in existing_tables]
 if missing:
-    st.error(f"다음 시트가 엑셀에 없습니다: {', '.join(missing)}")
+    st.error(f"SQLite DB에 다음 테이블(시트)이 없습니다: {', '.join(missing)}")
     st.stop()
 
-df_in_raw = sheets["입고"]
-df_job_raw = sheets["작업지시"]
-df_suju_raw = sheets["수주"]
-df_bom_raw = sheets["BOM"]
-df_stock_raw = sheets["재고"]
-df_result_raw = sheets["생산실적"]
-df_defect_raw = sheets["불량"]
+# 각 시트에 해당하는 테이블 읽기
+df_in_raw     = pd.read_sql("SELECT * FROM 입고", conn)
+df_job_raw    = pd.read_sql("SELECT * FROM 작업지시", conn)
+df_suju_raw   = pd.read_sql("SELECT * FROM 수주", conn)
+df_bom_raw    = pd.read_sql("SELECT * FROM BOM", conn)
+df_stock_raw  = pd.read_sql("SELECT * FROM 재고", conn)
+df_result_raw = pd.read_sql("SELECT * FROM 생산실적", conn)
+df_defect_raw = pd.read_sql("SELECT * FROM 불량", conn)
 
 # 집계는 환입 데이터 불러오기 시 최초 1회
 if "aggregates" not in st.session_state:
     st.session_state["aggregates"] = None
+
 
 
 # ============================
