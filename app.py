@@ -80,36 +80,66 @@ def get_db_connection(db_bytes: bytes):
     conn = sqlite3.connect(tmp.name, check_same_thread=False)
     return conn
 
+import io
+import tempfile
+
 REQUIRED_SHEETS = ["입고", "작업지시", "수주", "BOM", "재고", "생산실적", "불량"]
 
 def excel_bytes_to_sqlite_bytes(excel_bytes: bytes) -> bytes:
     """
-    업로드된 엑셀 바이트 → SQLite DB 파일(in 메모리)로 변환해서 bytes로 리턴
+    업로드된 엑셀 바이트 → SQLite DB(inout.db) 파일 bytes로 변환.
+    - 꼭 필요한 시트만 읽음
+    - dtype=str 로 읽어서 타입 추론 비용 최소화
     """
-    # 1) 엑셀 전체 읽기 (업로드 시 1번만 실행되니 괜찮음)
-    xls = pd.ExcelFile(io.BytesIO(excel_bytes))
 
-    # 2) 임시 DB 파일 생성
+    # 1) 엑셀 파일을 메모리에서 바로 읽기
+    bio = io.BytesIO(excel_bytes)
+
+    # 2) 한 번에 여러 시트를 읽어서 파싱 오버헤드 줄이기
+    #    sheet_name=list 를 주면 dict[sheet_name] 형태로 반환됨
+    try:
+        all_sheets = pd.read_excel(
+            bio,
+            sheet_name=REQUIRED_SHEETS,
+            dtype=str,           # 숫자/날짜 추론 안 하고 문자열로만 읽기 (빠름)
+            engine="openpyxl",   # 일반적으로 안정적인 엔진
+        )
+    except Exception as e:
+        # 혹시 engine 지정으로 문제가 생기면 기본 엔진으로 한번 더 시도
+        bio.seek(0)
+        all_sheets = pd.read_excel(
+            bio,
+            sheet_name=REQUIRED_SHEETS,
+            dtype=str,
+        )
+
+    # 3) 임시 DB 파일 생성
     tmp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
     conn = sqlite3.connect(tmp_db.name)
 
     try:
-        # 3) 각 시트를 동일 이름의 테이블로 저장
+        # 4) 필요한 시트만 테이블로 저장
         for sheet in REQUIRED_SHEETS:
-            if sheet not in xls.sheet_names:
+            if sheet not in all_sheets:
                 continue
-            df = pd.read_excel(xls, sheet_name=sheet)
+            df = all_sheets[sheet]
+
+            # 컬럼 이름에 공백 있으면 그대로 두어도 되지만,
+            # 나중에 쿼리할 때 불편하면 여기서 strip 정도는 해도 됨
+            df.columns = [str(c).strip() for c in df.columns]
+
             df.to_sql(sheet, conn, if_exists="replace", index=False)
 
         conn.commit()
     finally:
         conn.close()
 
-    # 4) 완성된 DB 파일을 bytes로 읽어서 반환
+    # 5) 완성된 DB 파일을 bytes로 읽어 반환
     with open(tmp_db.name, "rb") as f:
         db_bytes = f.read()
 
     return db_bytes
+
 
 
 # PDF 생성용 (reportlab 없는 환경에서도 앱이 죽지 않도록 처리)
