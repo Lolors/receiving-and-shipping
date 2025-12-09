@@ -1744,6 +1744,1806 @@ if menu == "🔍 수주 찾기":
 
                             # 1) 오늘 → 1개월 이내
                             df_1m = df_suju_hit[
+                                df_suju_hit[suju_due_col].between(today, one_month_after)
+                            ].copy()
 
+                            if not df_1m.empty:
+                                st.success("오늘 기준 1개월 이내 수주 발견!")
+                                df_show = df_1m
+                            else:
+                                # 2) 오늘 → 1년 이내
+                                df_1y = df_suju_hit[
+                                    df_suju_hit[suju_due_col].between(
+                                        today, one_year_after
+                                    )
+                                ].copy()
+
+                                if not df_1y.empty:
+                                    st.info("1개월 이내는 없고, 1년 이내 수주가 있습니다.")
+                                    df_1y.sort_values(
+                                        by=suju_due_col, ascending=False, inplace=True
+                                    )
+                                    df_show = df_1y
+                                else:
+                                    # 3) 과거 탐색: 3개월·6개월·12개월
+                                    back_3m = today - timedelta(days=90)
+                                    back_6m = today - timedelta(days=180)
+                                    back_12m = today - timedelta(days=365)
+
+                                    df_back3 = df_suju_hit[
+                                        df_suju_hit[suju_due_col].between(
+                                            back_3m, today
+                                        )
+                                    ].copy()
+
+                                    if not df_back3.empty:
+                                        st.info(
+                                            "1년 이내 수주는 없어서, 과거 3개월 수주를 보여줍니다."
+                                        )
+                                        df_back3.sort_values(
+                                            by=suju_due_col,
+                                            ascending=False,
+                                            inplace=True,
+                                        )
+                                        df_show = df_back3
+                                    else:
+                                        df_back6 = df_suju_hit[
+                                            df_suju_hit[suju_due_col].between(
+                                                back_6m, today
+                                            )
+                                        ].copy()
+
+                                        if not df_back6.empty:
+                                            st.info(
+                                                "3개월 이내 없음 → 과거 6개월 수주 표시."
+                                            )
+                                            df_back6.sort_values(
+                                                by=suju_due_col,
+                                                ascending=False,
+                                                inplace=True,
+                                            )
+                                            df_show = df_back6
+                                        else:
+                                            df_back12 = df_suju_hit[
+                                                df_suju_hit[suju_due_col].between(
+                                                    back_12m, today
+                                                )
+                                            ].copy()
+
+                                            if not df_back12.empty:
+                                                st.info(
+                                                    "6개월 이내 없음 → 과거 12개월 수주 표시."
+                                                )
+                                                df_back12.sort_values(
+                                                    by=suju_due_col,
+                                                    ascending=False,
+                                                    inplace=True,
+                                                )
+                                                df_show = df_back12
+                                            else:
+                                                st.warning(
+                                                    "과거 12개월까지도 해당 품목코드의 수주가 없습니다."
+                                                )
+                                                df_show = pd.DataFrame()
+
+
+
+                        # ===== 결과 표시 =====
+                        if not df_show.empty:
+                            display_cols = []
+                            for c in [
+                                suju_part_col,
+                                "품명",
+                                "수주번호",
+                                suju_due_col,
+                                "수량",
+                                "매출처",
+                            ]:
+                                if c in df_show.columns:
+                                    display_cols.append(c)
+
+                            st.dataframe(
+                                df_show[display_cols],
+                                use_container_width=True,
+                            )
+
+                        # =======================================================
+                        # 🔁 수주번호 → 작업지시 시트에서 지시번호 / 품명 가져오기
+                        # =======================================================
+                        if "수주번호" in df_show.columns:
+                            # 1) 수주 찾기 결과에서 수주번호 목록 추출
+                            suju_values = (
+                                df_show["수주번호"]
+                                .dropna()
+                                .astype(str)
+                                .unique()
+                                .tolist()
+                            )
+
+                            # 2) 작업지시 시트에서 컬럼 찾기
+                            job_suju_col = pick_col(
+                                df_job_raw, "A", ["수주번호"]
+                            )
+                            job_jisi_col = pick_col(
+                                df_job_raw, "B", ["지시번호"]
+                            )
+                            job_date_col = pick_col(
+                                df_job_raw, "I", ["지시일자", "작지일자"]
+                            )
+                            job_name_col = pick_col(
+                                df_job_raw, "L", ["품명", "완성품명"]
+                            )
+
+                            if not all(
+                                [job_suju_col, job_jisi_col, job_name_col]
+                            ):
+                                st.info(
+                                    "작업지시 시트에서 수주번호(A), 지시번호(B), 품명(L)을 모두 찾지 못했습니다."
+                                )
+                            else:
+                                # 3) 필요한 컬럼만 가져오기
+                                use_cols = [job_suju_col, job_jisi_col]
+                                if job_date_col:
+                                    use_cols.append(job_date_col)
+                                use_cols.append(job_name_col)
+
+                                df_job_map = df_job_raw[use_cols].copy()
+                                
+                                # 컬럼명 통일
+                                new_cols = ["수주번호", "지시번호"]
+                                if job_date_col:
+                                    new_cols.append("지시일자")
+                                new_cols.append("품명")
+                                df_job_map.columns = new_cols
+
+                                # 🔥 필수: 문자열 비교를 위한 컬럼 생성
+                                df_job_map["수주번호_str"] = df_job_map["수주번호"].astype(str)
+
+                                # 4) 수주찾기에서 나온 수주번호 목록과 일치하는 행 필터링
+                                df_job_filtered = df_job_map[
+                                    df_job_map["수주번호_str"].isin(
+                                        suju_values
+                                    )
+                                ].drop(columns=["수주번호_str"])
+
+                                if df_job_filtered.empty:
+                                    ...
+                                else:
+                                    # 중복 제거
+                                    subset_cols = ["수주번호", "지시번호", "품명"]
+                                    if "지시일자" in df_job_filtered.columns:
+                                        subset_cols = ["수주번호", "지시번호", "지시일자", "품명"]
+
+                                    df_job_filtered = df_job_filtered.drop_duplicates(
+                                        subset=subset_cols
+                                    )
+
+                                    # 🔽 지시일자가 최근일수록 위쪽에 오도록 정렬
+                                    if "지시일자" in df_job_filtered.columns:
+                                        df_job_filtered["_지시일자_sort"] = pd.to_datetime(
+                                            df_job_filtered["지시일자"], errors="coerce"
+                                        )
+                                        df_job_filtered = df_job_filtered.sort_values(
+                                            by=["_지시일자_sort", "지시번호"],
+                                            ascending=[False, True],
+                                        ).drop(columns=["_지시일자_sort"])
+                                    else:
+                                        # 지시일자가 없으면 지시번호 기준 오름차순
+                                        df_job_filtered = df_job_filtered.sort_values(
+                                            by=["지시번호"]
+                                        )
+
+                                    st.markdown(
+                                        "#### 수주번호별 지시번호 / 품명 (작업지시 기준)"
+                                    )
+
+                                    display_cols = ["수주번호", "지시번호"]
+                                    if "지시일자" in df_job_filtered.columns:
+                                        display_cols.append("지시일자")
+                                    display_cols.append("품명")
+
+                                    st.dataframe(
+                                        df_job_filtered[display_cols],
+                                        use_container_width=True,
+                                    )
+
+
+# ============================================================
+# ↩️ 4. 환입 관리 화면 (+ 환입 예상재고)
+# ============================================================
+if menu == "↩️ 환입 관리":
+    st.subheader("↩️ 환입 관리")
+
+    # 환입 관리 테이블 구조 (내부 계산용)
+    return_cols = [
+        "수주번호",
+        "지시번호",
+        "생산공정",
+        "생산시작일",
+        "생산종료일",
+        "종료조건",
+        "환입일",
+        "환입주차",
+        "완성품번",
+        "제품명",  # 완성품명
+        "품번",
+        "품명",
+        "단위수량",
+        "ERP재고",
+        "실재고예상",
+        "환입결정수",
+        "차이",
+        "비고",
+    ]
+    df_return = ensure_session_df("환입관리", return_cols)
+    df_full = ensure_session_df("환입재고예상", CSV_COLS)
+
+    # 🔍 수주 검색 (입고 시트 기준)
+    st.markdown("### 🔍 수주 검색 (입고 시트 기준)")
+
+    search_keyword = st.text_input(
+        "제품명으로 수주 검색 (입고 시트 E열, 부분 일치)",
+        key="return_search_product",
+        placeholder="예: 앰플, 크림, 마스크팩 등",
+    )
+
+    if search_keyword:
+        df_in_search = df_in_raw.copy()
+
+        # 요청날짜(K열), 제품명(E열) 컬럼 찾기
+        in_req_date_col = pick_col(df_in_search, "K", ["요청날짜", "요청일"])
+        in_prod_name_col = pick_col(df_in_search, "E", ["제품명", "품명"])
+
+        if in_req_date_col is None or in_prod_name_col is None:
+            st.error("입고 시트에서 요청날짜(K열) 또는 제품명(E열) 컬럼을 찾지 못했습니다.")
+        else:
+            # 날짜형 변환
+            df_in_search[in_req_date_col] = pd.to_datetime(
+                df_in_search[in_req_date_col], errors="coerce"
+            ).dt.date
+
+            today = date.today()
+            start_date = today - timedelta(days=30)  # 최근 1개월
+
+            # 날짜 필터: 현재로부터 1달 이내
+            mask_date = df_in_search[in_req_date_col].between(start_date, today)
+
+            # 제품명 부분 일치 (대소문자 무시)
+            mask_name = df_in_search[in_prod_name_col].astype(str).str.contains(
+                search_keyword, case=False, na=False
+            )
+
+            df_hit = df_in_search[mask_date & mask_name].copy()
+
+            if df_hit.empty:
+                st.info("최근 1개월 이내에 해당 제품명이 포함된 입고 데이터가 없습니다.")
+            else:
+                # 추가로 보여줄 컬럼들: 수주번호(B), 지시번호(C), 품번(M)
+                in_suju_col = pick_col(df_hit, "B", ["수주번호"])
+                in_jisi_col = pick_col(df_hit, "C", ["지시번호"])
+                in_part_col = pick_col(df_hit, "M", ["품번"])
+
+                show_cols = []
+                for c in [
+                    in_req_date_col,
+                    in_suju_col,
+                    in_jisi_col,
+                    in_prod_name_col,
+                    in_part_col,
+                ]:
+                    if c and c in df_hit.columns:
+                        show_cols.append(c)
+
+                df_show = df_hit[show_cols].copy()
+
+                # 컬럼명 한글로 정리
+                rename_map = {}
+                rename_map[in_req_date_col] = "요청날짜"
+                if in_suju_col:
+                    rename_map[in_suju_col] = "수주번호"
+                if in_jisi_col:
+                    rename_map[in_jisi_col] = "지시번호"
+                if in_prod_name_col:
+                    rename_map[in_prod_name_col] = "제품명"
+                if in_part_col:
+                    rename_map[in_part_col] = "품번"
+
+                df_show.rename(columns=rename_map, inplace=True)
+
+                # 품번 제거 (검색용에서만 표시했다 지우기)
+                if "품번" in df_show.columns:
+                    df_show = df_show.drop(columns=["품번"])
+
+                # 요청날짜는 중복 제거 기준 제외, 수주번호+지시번호 기준으로 유일하게
+                uniq_cols = [c for c in ["수주번호", "지시번호"] if c in df_show.columns]
+                df_show = df_show.drop_duplicates(subset=uniq_cols)
+
+                st.dataframe(df_show, use_container_width=True)
+
+                # 🔽 검색 결과에서 선택하면 아래 수주번호/지시번호 자동 채우기
+                if "수주번호" in df_show.columns:
+                    df_select = df_show.reset_index(drop=True)
+
+                    option_labels = []
+                    option_map = {}
+
+                    for _, row in df_select.iterrows():
+                        suju_val = str(row.get("수주번호", ""))
+                        jisi_val = str(row.get("지시번호", ""))
+                        prod_val = str(row.get("제품명", ""))
+
+                        label = f"{prod_val} | 수주:{suju_val}"
+                        if jisi_val:
+                            label += f" / 지시:{jisi_val}"
+
+                        option_labels.append(label)
+                        option_map[label] = (suju_val, jisi_val)
+
+                    selected_label = st.selectbox(
+                        "👇 이 중 하나를 선택하면 아래 수주번호/지시번호가 자동으로 채워집니다.",
+                        ["선택 안 함"] + option_labels,
+                        key="return_suju_autofill",
+                    )
+
+                    if selected_label != "선택 안 함":
+                        sel_suju, sel_jisi = option_map[selected_label]
+                        st.session_state["return_suju_no"] = sel_suju
+                        if sel_jisi:
+                            st.session_state["return_jisi"] = sel_jisi
+
+    # ----- 입력 1줄 (수주번호, 지시번호, 생산공정, 종료조건) -----
+    col_suju, col_jisi, col_proc, col_reason = st.columns(4)
+    with col_suju:
+        suju_no = st.text_input("수주번호", key="return_suju_no")
+    with col_jisi:
+        selected_jisi = None  # 아래에서 selectbox로 채움
+    with col_proc:
+        process_options = [
+            "4층 덕용",
+            "4층 로터리",
+            "4층 블리스터",
+            "5층 덕용",
+            "5층 기초",
+            "6층 스틱",
+            "6층 파우치",
+            "6층 스킨팩",
+        ]
+        process_value = st.selectbox("생산공정", process_options, key="return_process")
+    with col_reason:
+        finish_reason = st.text_input("종료조건", key="return_finish_reason")
+
+    # 수주번호 기반 지시번호/완성품번 후보 찾기
+    jisi_options = []
+    finished_part_selected = None
+
+    # 🔹 작업지시 시트의 작업장 컬럼(X열) 찾기
+    job_wc_col = pick_col(df_job_raw, "X", ["작업장"])
+
+    if suju_no:
+        if "수주번호" in df_job_raw.columns:
+            # 1차: 수주번호 기준 필터
+            df_job_suju = df_job_raw[df_job_raw["수주번호"] == suju_no].copy()
+
+            # 🔹 2차: 작업장 WC501~WC504 조건 추가
+            if job_wc_col and job_wc_col in df_job_suju.columns:
+                df_job_suju = df_job_suju[
+                    df_job_suju[job_wc_col].astype(str).isin(
+                        ["WC501", "WC502", "WC503", "WC504"]
+                    )
+                ]
+
+            # 👉 필터 후 아무 것도 없으면 안내
+            if df_job_suju.empty:
+                st.warning("해당 수주번호에 대해 작업장 WC401~WC404 작업지시가 없습니다.")
+            else:
+                # 완성품번 후보
+                finished_parts = (
+                    df_job_suju["품번"].dropna().unique().tolist()
+                    if "품번" in df_job_suju.columns
+                    else []
+                )
+
+                if len(finished_parts) > 1:
+                    finished_part_selected = st.selectbox(
+                        "완성품번", finished_parts, key="return_finished_part"
+                    )
+                    df_job_suju = df_job_suju[
+                        df_job_suju["품번"] == finished_part_selected
+                    ]
+                elif len(finished_parts) == 1:
+                    finished_part_selected = finished_parts[0]
+
+                # 지시번호 후보
+                if "지시번호" in df_job_suju.columns:
+                    jisi_options = (
+                        df_job_suju["지시번호"].dropna().unique().tolist()
+                    )
+                else:
+                    st.error("작업지시 시트에 '지시번호' 컬럼이 없습니다.")
+        else:
+            st.error("작업지시 시트에 '수주번호' 컬럼이 없습니다.")
+
+
+    # 지시번호 선택 (수주번호 입력 후)
+    if jisi_options:
+        selected_jisi = col_jisi.selectbox(
+            "지시번호", jisi_options, key="return_jisi"
+        )
+    else:
+        with col_jisi:
+            st.write("지시번호: 선택 없음")
+
+    # ----- 생산 시작/종료일 -----
+    production_start_date = None
+    production_end_date = None
+    if (
+        suju_no
+        and "수주번호" in df_result_raw.columns
+        and "생산일자" in df_result_raw.columns
+    ):
+        df_res_suju = df_result_raw[df_result_raw["수주번호"] == suju_no].copy()
+        df_res_suju["생산일자"] = pd.to_datetime(
+            df_res_suju["생산일자"], errors="coerce"
+        )
+        if not df_res_suju["생산일자"].isna().all():
+            production_start_date = df_res_suju["생산일자"].min().date()
+            production_end_date = df_res_suju["생산일자"].max().date()
+
+    st.write(f"생산시작일: {production_start_date or '데이터 없음'}")
+    st.write(f"생산종료일: {production_end_date or '데이터 없음'}")
+
+    # ----- 환입일/환입주차 -----
+    return_date = date.today()
+    return_week = get_week_of_month(return_date)
+    st.write(f"환입일: {return_date}")
+    st.write(f"환입주차: {return_week}")
+
+    # ----- 완성품번 / 완성품명 (BOM에서 품명 가져오기) -----
+    finished_part = finished_part_selected
+    finished_name = None
+
+    # 1차: 지시번호에서 완성품번 유추 (없을 때만)
+    if not finished_part and selected_jisi and "지시번호" in df_job_raw.columns:
+        df_job_jisi = df_job_raw[df_job_raw["지시번호"] == selected_jisi]
+        if not df_job_jisi.empty and "품번" in df_job_jisi.columns:
+            finished_part = df_job_jisi["품번"].iloc[0]
+
+    # BOM에서 완성품명 찾기 (품목코드=A열, 품명=B열)
+    if finished_part is not None:
+        bom_cols = list(df_bom_raw.columns)
+        item_col = "품목코드" if "품목코드" in bom_cols else bom_cols[0]
+        name_col = (
+            "품명"
+            if "품명" in bom_cols
+            else (bom_cols[1] if len(bom_cols) > 1 else bom_cols[0])
+        )
+
+        df_bom_match = df_bom_raw[df_bom_raw[item_col] == finished_part]
+        if not df_bom_match.empty:
+            finished_name = df_bom_match[name_col].iloc[0]
+        else:
+            if (
+                selected_jisi
+                and "지시번호" in df_job_raw.columns
+                and "품명" in df_job_raw.columns
+            ):
+                df_job_jisi = df_job_raw[df_job_raw["지시번호"] == selected_jisi]
+                if not df_job_jisi.empty:
+                    finished_name = df_job_jisi["품명"].iloc[0]
+
+    st.write(f"완성품번: {finished_part or '데이터 없음'}")
+    st.write(f"완성품명: {finished_name or '데이터 없음'}")
+
+    # ----- BOM 자재 목록 -----
+    bom_component_df = pd.DataFrame()
+    if finished_part is not None:
+        bom_cols = list(df_bom_raw.columns)
+        item_col = "품목코드" if "품목코드" in bom_cols else bom_cols[0]
+        bom_part_cols = [c for c in bom_cols if "품번" in c]
+        bom_name_cols = [c for c in bom_cols if "품명" in c]
+
+        bom_component_col2 = (
+            bom_part_cols[1]
+            if len(bom_part_cols) >= 2
+            else (bom_part_cols[0] if bom_part_cols else None)
+        )
+        bom_name_col2 = (
+            bom_name_cols[1]
+            if len(bom_name_cols) >= 2
+            else (bom_name_cols[0] if len(bom_name_cols) > 0 else None)
+        )
+
+        df_bom_finished = df_bom_raw[df_bom_raw[item_col] == finished_part].copy()
+        if df_bom_finished.empty:
+            st.warning("BOM에서 해당 완성품번(품목코드)을 사용하는 자재를 찾지 못했습니다.")
+        else:
+            subset_cols = []
+            if bom_component_col2 and bom_component_col2 in df_bom_finished.columns:
+                subset_cols.append(bom_component_col2)
+            if bom_name_col2 and bom_name_col2 in df_bom_finished.columns:
+                subset_cols.append(bom_name_col2)
+            if "단위수량" in df_bom_finished.columns:
+                subset_cols.append("단위수량")
+
+            if subset_cols:
+                df_bom_fin_uniq = df_bom_finished.drop_duplicates(subset=subset_cols)
+            else:
+                df_bom_fin_uniq = df_bom_finished.drop_duplicates()
+
+            bom_component_df = pd.DataFrame(
+                {
+                    "선택": True,
+                    "완성품번": df_bom_fin_uniq[item_col],
+                    "품번": df_bom_fin_uniq[bom_component_col2]
+                    if bom_component_col2 in df_bom_fin_uniq.columns
+                    else "",
+                    "품명": df_bom_fin_uniq[bom_name_col2]
+                    if bom_name_col2 in df_bom_fin_uniq.columns
+                    else "",
+                    "단위수량": df_bom_fin_uniq["단위수량"]
+                    if "단위수량" in df_bom_fin_uniq.columns
+                    else "",
+                }
+            )
+
+            st.markdown("BOM 자재 목록에서 환입 대상 자재를 선택하세요.")
+            bom_component_df = st.data_editor(
+                bom_component_df,
+                use_container_width=True,
+                num_rows="dynamic",
+                key="bom_component_editor",
+            )
+
+            # ===============================
+            # 🔘 (여기!) 환입 데이터 불러오기 / 초기화 버튼 (가운데 정렬)
+            #  → BOM 자재 표가 뜬 뒤에만 보이도록
+            # ===============================
+            col_left, col_center, col_right = st.columns([1, 2, 1])
+
+            with col_center:
+                col_btn1, col_btn2 = st.columns([1, 1])
+
+                with col_btn1:
+                    load_clicked = st.button("✅ 환입 데이터 불러오기", key="btn_return_load")
+
+                with col_btn2:
+                    clear_clicked = st.button(
+                        "🧹 환입 예상재고 초기화", key="btn_clear_expect"
+                    )
+
+            # 🔍 환입 데이터 불러오기 실행 로직
+            if load_clicked:
+                if not suju_no:
+                    st.error("수주번호를 입력해주세요.")
+                elif not selected_jisi:
+                    st.error("지시번호를 선택해주세요.")
+                elif bom_component_df.empty:
+                    st.error("BOM 자재 목록이 없습니다.")
+                else:
+                    selected_rows = bom_component_df[
+                        bom_component_df["선택"] == True
+                    ].copy()
+                    if selected_rows.empty:
+                        st.warning("선택된 자재가 없습니다. 최소 1개 선택해주세요.")
+                    else:
+                        new_rows = []
+                        for _, row in selected_rows.iterrows():
+                            part = row["품번"]
+                            name = row["품명"]
+                            unit = row["단위수량"]
+
+                            new_rows.append(
+                                {
+                                    "수주번호": suju_no,
+                                    "지시번호": selected_jisi,
+                                    "생산공정": process_value,
+                                    "생산시작일": production_start_date,
+                                    "생산종료일": production_end_date,
+                                    "종료조건": finish_reason,
+                                    "환입일": return_date,
+                                    "환입주차": return_week,
+                                    "완성품번": finished_part,
+                                    "제품명": finished_name,
+                                    "품번": part,
+                                    "품명": name,
+                                    "단위수량": unit,
+                                    "ERP재고": None,
+                                    "실재고예상": None,
+                                    "환입결정수": None,
+                                    "차이": None,
+                                    "비고": "",
+                                }
+                            )
+
+                        df_new = pd.DataFrame(new_rows)
+
+                        # ✅ 이전 환입관리 내용은 버리고,
+                        #    이번에 선택한 자재(df_new)만 환입관리로 사용
+                        df_return = df_new.copy()
+                        st.session_state["환입관리"] = df_return
+
+
+                        # 집계 최초 생성
+                        if st.session_state["aggregates"] is None:
+                            st.session_state["aggregates"] = build_aggregates(
+                                df_in_raw,
+                                df_job_raw,
+                                df_result_raw,
+                                df_defect_raw,
+                                df_stock_raw,
+                            )
+
+                        aggs = st.session_state["aggregates"]
+
+                        # 예상재고 계산
+                        df_full = recalc_return_expectation(df_return, aggs)
+                        st.session_state["환입재고예상"] = df_full
+
+                        # ERP재고 매칭
+                        stock_part_col = pick_col(df_stock_raw, "D", ["품번"])
+                        stock_qty_col = (
+                            "실재고수량"
+                            if "실재고수량" in df_stock_raw.columns
+                            else pick_col(df_stock_raw, "N", ["실재고수량"])
+                        )
+
+                        if stock_part_col and stock_qty_col:
+                            stock_map = dict(
+                                zip(
+                                    df_stock_raw[stock_part_col].astype(str),
+                                    df_stock_raw[stock_qty_col].apply(safe_num),
+                                )
+                            )
+                            df_full["ERP재고"] = (
+                                df_full["품번"].astype(str).map(stock_map).fillna(0)
+                            )
+                        else:
+                            st.warning(
+                                "재고 시트에서 품번 또는 실재고수량 컬럼을 찾을 수 없습니다."
+                            )
+
+                        st.success(
+                            f"선택된 자재 {len(df_new)}개에 대해 환입 예상재고 데이터가 갱신되었습니다."
+                        )
+
+            # 🧹 환입 예상재고 초기화 실행 로직
+            if clear_clicked:
+                # ✅ 환입관리도 함께 초기화
+                st.session_state["환입관리"] = pd.DataFrame(columns=return_cols)
+                df_return = st.session_state["환입관리"]
+
+                st.session_state["환입재고예상"] = pd.DataFrame(columns=CSV_COLS)
+                df_full = st.session_state["환입재고예상"]
+
+                st.success("환입 관리 / 환입 예상재고 데이터가 모두 초기화되었습니다.")
+
+
+    # ----- 환입 예상재고 데이터 표시 + CSV + PDF + 라벨 -----
+    st.markdown("### 환입 예상재고 데이터")
+
+    df_full = st.session_state.get(
+        "환입재고예상", pd.DataFrame(columns=CSV_COLS)
+    )
+
+    if df_full.empty:
+        st.write("환입 데이터 불러오기를 실행하면 이곳에 결과가 표시됩니다.")
+    else:
+        # -------------------------------------------------
+        # 0) df_full 기본 세팅
+        # -------------------------------------------------
+        df_full = df_full.copy().reset_index(drop=True)
+
+        col_defaults = {
+            "추가수주": "",
+            "라벨선택": False,
+            "공통부자재": False,
+        }
+        for col, default in col_defaults.items():
+            if col not in df_full.columns:
+                df_full[col] = default
+
+        for bcol in ["라벨선택", "공통부자재"]:
+            df_full[bcol] = df_full[bcol].fillna(False).astype(bool)
+
+        st.session_state["환입재고예상"] = df_full
+
+        # -------------------------------------------------
+        # 1) 추가수주 자동 채우기용 공통 입고기간 선택
+        # -------------------------------------------------
+        today = date.today()
+        default_start = today - timedelta(days=30)
+        date_range = st.date_input(
+            "추가수주 자동생성용 입고기간 선택",
+            (default_start, today),
+            key="extra_order_range",
+        )
+        if isinstance(date_range, (tuple, list)):
+            start_date, end_date = date_range
+        else:
+            start_date = end_date = date_range
+
+        # -------------------------------------------------
+        # 2) data_editor 에서 쓸 표시 컬럼 구성
+        #    - 공통부자재: 맨 앞
+        #    - 수주번호 뒤에 추가수주
+        #    - 라벨선택: 여기서는 숨김
+        # -------------------------------------------------
+        base_cols = [c for c in VISIBLE_COLS if c in df_full.columns]
+
+        display_cols = []
+
+        # 맨 앞 공통부자재
+        display_cols.append("공통부자재")
+
+        # 수주번호 / 추가수주 / 나머지
+        if "수주번호" in base_cols:
+            display_cols.append("수주번호")
+            display_cols.append("추가수주")
+            for c in base_cols:
+                if c != "수주번호":
+                    display_cols.append(c)
+        else:
+            display_cols.extend(base_cols)
+            if "추가수주" not in display_cols:
+                display_cols.append("추가수주")
+
+        # 라벨선택은 여기서는 숨김
+        if "라벨선택" in display_cols:
+            display_cols.remove("라벨선택")
+
+        # 화면용 DF
+        df_visible = pd.DataFrame(index=df_full.index)
+        for c in display_cols:
+            if c in df_full.columns:
+                df_visible[c] = df_full[c]
+
+        if "공통부자재" in df_visible.columns:
+            df_visible["공통부자재"] = df_visible["공통부자재"].fillna(False).astype(bool)
+        if "추가수주" in df_visible.columns:
+            df_visible["추가수주"] = df_visible["추가수주"].astype(str)
+
+        # -------------------------------------------------
+        # 2-1) form 안에 data_editor + 두 개 버튼(저장 / 자동채우기)
+        #      → 둘 중 하나만 눌러도 한 번에 처리
+        # -------------------------------------------------
+        with st.form("return_editor_form"):
+
+            df_edit = st.data_editor(
+                df_visible,
+                use_container_width=True,
+                num_rows="fixed",
+                hide_index=True,
+                column_config={
+                    "공통부자재": st.column_config.CheckboxColumn(
+                        "공통부자재",
+                        default=False,
+                    )
+                },
+                key="return_editor",
+            )
+
+            col_btn1, col_btn2 = st.columns(2)
+            with col_btn1:
+                save_clicked = st.form_submit_button("💾 공통부자재 / 추가수주 저장")
+            with col_btn2:
+                auto_clicked = st.form_submit_button("🔄 입고기간 기준으로 추가수주 자동 채우기")
+
+        # 🔹 혹시 데이터가 비정상 타입으로 들어오는 경우 방지
+        if not isinstance(df_edit, pd.DataFrame):
+            df_edit = pd.DataFrame(df_edit)
+
+        # -------------------------------------------------
+        # 3) 폼이 제출되었을 때(df_edit → df_full 반영)
+        #    - 저장 버튼만 눌렀을 때: 세션에만 저장
+        #    - 자동채우기 버튼 눌렀을 때: 저장 + 자동채우기 + 재계산
+        # -------------------------------------------------
+        if save_clicked or auto_clicked:
+            # 3-1) 에디터 값 → df_full 반영
+            for col in ["공통부자재", "추가수주"]:
+                if col in df_edit.columns:
+                    df_full[col] = df_edit[col].reindex(df_full.index).values
+
+            df_full["공통부자재"] = df_full["공통부자재"].fillna(False).astype(bool)
+            st.session_state["환입재고예상"] = df_full
+
+            # 3-2) 자동채우기 버튼이 눌린 경우에만 추가 작업
+            if auto_clicked:
+                df_full = df_full.copy()
+
+                # 공통부자재 체크된 행만 대상
+                if "공통부자재" in df_full.columns:
+                    target_idx = df_full.index[df_full["공통부자재"] == True]
+                else:
+                    target_idx = df_full.index
+
+                # ---------- (1) 추가수주 자동 채우기 ----------
+                for idx in target_idx:
+                    row = df_full.loc[idx]
+                    part = row.get("품번", None)
+                    base_suju = row.get("수주번호", None)
+
+                    if part is None or pd.isna(part) or base_suju is None or pd.isna(base_suju):
+                        continue
+
+                    extra = get_extra_orders_by_period(
+                        part_code=str(part),
+                        base_suju=str(base_suju),
+                        start_date=start_date,
+                        end_date=end_date,
+                    )
+
+                    if not extra:
+                        continue
+
+                    current = str(row.get("추가수주", "")).strip()
+                    if current:
+                        current_list = [s.strip() for s in current.split(",") if s.strip()]
+                        extra_list   = [s.strip() for s in extra.split(",") if s.strip()]
+                        merged = sorted(set(current_list + extra_list))
+                        df_full.at[idx, "추가수주"] = ", ".join(merged)
+                    else:
+                        df_full.at[idx, "추가수주"] = extra
+
+                # ---------- (2) 공통부자재 행 재계산 ----------
+                aggs = st.session_state.get("aggregates", None)
+
+                if aggs is None:
+                    st.warning("공통부자재 합산을 위해서는 먼저 '환입 데이터 불러오기' 버튼으로 집계를 만들어야 합니다.")
+                else:
+                    import re
+
+                    def recompute_row_with_extra_orders(row):
+                        part = str(row.get("품번", "")).strip()
+                        base_suju = str(row.get("수주번호", "")).strip()
+                        extra_text = str(row.get("추가수주", "")).strip()
+
+                        if not part or not base_suju:
+                            return row
+
+                        suju_list = [base_suju]
+                        if extra_text:
+                            extra_ids = [
+                                s.strip()
+                                for s in re.split(r"[ ,;/]+", extra_text)
+                                if s.strip()
+                            ]
+                            suju_list.extend(extra_ids)
+
+                        in_tbl = aggs.get("in")
+                        res_tbl = aggs.get("result")
+
+                        # 1) 입고 합계 (품번 + 수주번호)
+                        erp_out = 0.0
+                        real_in = safe_num(row.get("현장실물입고", 0))
+                        if isinstance(in_tbl, pd.DataFrame) and not in_tbl.empty:
+                            mask_in = (
+                                in_tbl["품번"].astype(str) == part
+                            ) & (
+                                in_tbl["수주번호"].astype(str).isin(suju_list)
+                            )
+                            tmp_in = in_tbl.loc[mask_in]
+                            if not tmp_in.empty:
+                                erp_out = tmp_in["ERP불출수량"].apply(safe_num).sum()
+                                real_in = tmp_in["현장실물입고"].apply(safe_num).sum()
+
+                        # 2) 생산/샘플 합계 (수주번호 기준)
+                        prod = safe_num(row.get("생산수량", 0))
+                        qc   = safe_num(row.get("QC샘플", 0))
+                        etc  = safe_num(row.get("기타샘플", 0))
+
+                        if (
+                            isinstance(res_tbl, pd.DataFrame)
+                            and not res_tbl.empty
+                            and "수주번호" in res_tbl.columns
+                        ):
+                            mask_res = res_tbl["수주번호"].astype(str).isin(suju_list)
+                            tmp_res = res_tbl.loc[mask_res]
+                            if not tmp_res.empty:
+                                if "생산수량" in tmp_res.columns:
+                                    prod = tmp_res["생산수량"].apply(safe_num).sum()
+                                if "QC샘플" in tmp_res.columns:
+                                    qc = tmp_res["QC샘플"].apply(safe_num).sum()
+                                if "기타샘플" in tmp_res.columns:
+                                    etc = tmp_res["기타샘플"].apply(safe_num).sum()
+
+                        orig_def = safe_num(row.get("원불", 0))
+                        proc_def = safe_num(row.get("작불", 0))
+                        unit = safe_num(row.get("단위수량", 0))
+
+                        row["ERP불출수량"] = erp_out
+                        row["현장실물입고"] = real_in
+                        row["생산수량"] = prod
+                        row["QC샘플"] = qc
+                        row["기타샘플"] = etc
+
+                        row["예상재고"] = (
+                            real_in
+                            - (prod + qc + etc) * unit
+                            - orig_def
+                            - proc_def
+                        )
+
+                        return row
+
+                    df_full.loc[target_idx] = df_full.loc[target_idx].apply(
+                        recompute_row_with_extra_orders, axis=1
+                    )
+
+                # 🔚 최종값 저장 후 즉시 다시 렌더 → 1번 클릭에도 결과 보이게
+                st.session_state["환입재고예상"] = df_full
+                import streamlit as st  # 이미 위에 있으면 생략
+                st.rerun()
+
+            else:
+                # 저장 버튼만 눌렀을 때
+                st.success("공통부자재 / 추가수주 변경 내용을 저장했습니다.")
+
+        # -------------------------------------------------
+        # 4) 계산 결과 (보기용) - 여기에서만 라벨선택 노출
+        #    (여기 아래는 기존 코드 그대로 써도 됨)
+        # -------------------------------------------------
+        df_full = st.session_state["환입재고예상"].copy()
+
+        visible_cols = [c for c in VISIBLE_COLS if c in df_full.columns]
+        result_cols = visible_cols.copy()
+        if "라벨선택" in df_full.columns:
+            result_cols.append("라벨선택")
+
+        df_result_view = df_full[result_cols].copy()
+        if "라벨선택" in df_result_view.columns:
+            df_result_view["라벨선택"] = (
+                df_result_view["라벨선택"].fillna(False).astype(bool)
+            )
+
+        st.markdown("#### 계산 결과 (보기용)")
+        df_result_edit = st.data_editor(
+            df_result_view,
+            use_container_width=True,
+            num_rows="fixed",
+            hide_index=True,
+            column_config={
+                "라벨선택": st.column_config.CheckboxColumn("라벨선택", default=False)
+            },
+            key="return_result_editor",
+        )
+
+        if "라벨선택" in df_result_edit.columns:
+            df_full["라벨선택"] = (
+                df_result_edit["라벨선택"].fillna(False).astype(bool)
+            )
+
+        st.session_state["환입재고예상"] = df_full
+
+        # ----------------------------------------------------
+        # 🔽 여기부터는 기존 CSV / PDF / 라벨 로직 (df_full 기반)
+        # ----------------------------------------------------
+        
+        # ---------- 품번별 수주번호 선택 (CSV 통합용) ----------
+        merge_choices = {}
+        work = df_full.copy()
+
+        if "품번" in work.columns and "수주번호" in work.columns:
+            suju_counts = work.groupby("품번")["수주번호"].nunique()
+            dup_parts = suju_counts[suju_counts > 1].index.tolist()
+
+            if dup_parts:
+                st.markdown("#### 품번별 수주번호 선택 (CSV 통합용)")
+                for part in dup_parts:
+                    sub = work[work["품번"] == part]
+                    combos = sub[["수주번호", "완성품명"]].drop_duplicates()
+
+                    options = [
+                        f"{str(row['수주번호'])} {str(row['완성품명'])}"
+                        for _, row in combos.iterrows()
+                    ]
+                    if not options:
+                        continue
+
+                    key = f"merge_choice_{part}"
+                    default = st.session_state.get(key, options[0])
+                    try:
+                        default_index = options.index(default)
+                    except ValueError:
+                        default_index = 0
+
+                    choice = st.selectbox(
+                        f"품번 {part} - 수주/완성품명 선택",
+                        options,
+                        index=default_index,
+                        key=key,
+                    )
+                    merge_choices[part] = choice
+
+        # ---------- 1단계: (수주번호, 지시번호, 품번) 동일한 행 먼저 통합 ----------
+        key_cols = ["수주번호", "지시번호", "품번"]
+        key_cols = [c for c in key_cols if c in work.columns]
+
+        if key_cols:
+            agg_dict_step1 = {}
+            for col in work.columns:
+                if col in key_cols:
+                    continue
+                if col in ["ERP불출수량", "현장실물입고"]:
+                    agg_dict_step1[col] = "sum"
+                else:
+                    agg_dict_step1[col] = "first"
+
+            work = work.groupby(key_cols, as_index=False).agg(agg_dict_step1)
+
+        # ---------- 2단계: 품번 단위로 최종 통합 ----------
+        result_rows = []
+
+        header_cols = [
+            "수주번호",
+            "지시번호",
+            "생산공정",
+            "생산시작일",
+            "생산종료일",
+            "종료조건",
+            "환입일",
+            "환입주차",
+            "완성품번",
+            "완성품명",
+            "품명",
+        ]
+
+        sum_cols = [
+            "ERP불출수량",
+            "현장실물입고",
+            "지시수량",
+            "생산수량",
+            "QC샘플",
+            "기타샘플",
+            "원불",
+            "작불",
+            "예상재고",
+        ]
+
+        unit_col = "단위수량"
+
+        if "품번" in work.columns:
+            for part, part_df in work.groupby("품번"):
+                # 사용자가 선택한 대표 수주번호 적용
+                if part in merge_choices:
+                    sel_suju, _, _ = merge_choices[part].partition(" ")
+                    base = part_df[part_df["수주번호"].astype(str) == sel_suju]
+                    header_row = base.iloc[0] if not base.empty else part_df.iloc[0]
+                else:
+                    header_row = part_df.iloc[0]
+
+                row = {}
+                row["품번"] = part
+
+                # 헤더 계열: 대표 수주/지시의 값 유지
+                for col in header_cols:
+                    row[col] = header_row.get(col, None)
+
+                # 수량 계열: 모두 합계
+                for col in sum_cols:
+                    if col in part_df.columns:
+                        row[col] = part_df[col].apply(safe_num).sum()
+                    else:
+                        row[col] = 0
+
+                # 단위수량: 대표값만
+                row[unit_col] = safe_num(header_row.get(unit_col, 0))
+
+                # ERP재고: 같은 품번이면 동일 → 대표값만
+                if "ERP재고" in part_df.columns:
+                    non_na = part_df["ERP재고"].dropna()
+                    row["ERP재고"] = (
+                        safe_num(non_na.iloc[0]) if not non_na.empty else 0
+                    )
+                else:
+                    row["ERP재고"] = 0
+
+                result_rows.append(row)
+
+        grouped = pd.DataFrame(result_rows) if result_rows else work.copy()
+
+        # CSV 컬럼 정리
+        for col in CSV_COLS:
+            if col not in grouped.columns:
+                grouped[col] = None
+
+        csv_export_df = grouped[CSV_COLS].copy()
+
+        # ---------- CSV 받기 버튼 ----------
+        csv_data = csv_export_df.to_csv(index=False).encode("utf-8-sig")
+        st.download_button(
+            "📥 CSV 받기",
+            data=csv_data,
+            file_name="환입_예상재고_통합.csv",
+            mime="text/csv",
+        )
+
+        # 🔹 PDF / 비고코멘트 / 바코드 라벨을 좌·우 2열 레이아웃으로 배치
+        col_left, col_right = st.columns(2)
+
+        # =========================
+        # ⬅️ 왼쪽 컬럼: PDF + 입고 비고 코멘트
+        # =========================
+        with col_left:
+            if REPORTLAB_AVAILABLE and not csv_export_df.empty:
+                st.markdown("### 📑 PDF 상단 메모")
+
+                pasted_text = st.text_area(
+                    "PDF 메모",
+                    height=100,
+                    key="pdf_note_text",
+                    placeholder="여기에 메모나 특이사항을 입력/붙여넣기 하세요.",
+                )
+
+                pdf_bytes = generate_pdf(csv_export_df, pasted_text=pasted_text)
+
+                st.download_button(
+                    "📄 PDF 받기",
+                    data=pdf_bytes,
+                    file_name="환입_예상재고.pdf",
+                    mime="application/pdf",
+                )
+            elif not REPORTLAB_AVAILABLE:
+                st.info("PDF 저장 기능을 쓰려면 `pip install reportlab` 설치가 필요합니다.")
+
+            # ----- 입고 시트 비고 코멘트 -----
+            st.markdown("### 📝 입고 비고 코멘트")
+
+            in_suju_col = pick_col(df_in_raw, "B", ["수주번호"])
+            in_jisi_col = pick_col(df_in_raw, "C", ["지시번호"])
+            in_part_col = pick_col(df_in_raw, "M", ["품번"])
+            in_cmt_col = pick_col(df_in_raw, "V", ["비고", "비고2"])
+
+            if in_suju_col and in_jisi_col and in_part_col and in_cmt_col:
+                df_in_comment = df_in_raw[
+                    [in_suju_col, in_jisi_col, in_part_col, in_cmt_col]
+                ].copy()
+                df_in_comment.columns = ["수주번호", "지시번호", "품번", "비고2"]
+                df_in_comment = df_in_comment.dropna(subset=["비고2"])
+
+                if not df_in_comment.empty:
+                    df_comment_merge = df_full.merge(
+                        df_in_comment,
+                        how="left",
+                        on=["수주번호", "지시번호", "품번"],
+                    )
+
+                    df_comment_show = df_comment_merge.dropna(subset=["비고2"])[
+                        ["품번", "품명", "비고2"]
+                    ].drop_duplicates()
+
+                    if not df_comment_show.empty:
+                        for _, row in df_comment_show.iterrows():
+                            st.markdown(
+                                f"- **{row['품번']} / {row['품명']}** : {row['비고2']}"
+                            )
+                    else:
+                        st.caption("표시할 비고 코멘트가 없습니다.")
+                else:
+                    st.caption("입고 시트에 비고 내용이 없습니다.")
+            else:
+                st.caption("입고 시트에서 비고 컬럼을 찾지 못했습니다.")
+
+        # =========================
+        # ➡️ 오른쪽 컬럼: 바코드 입력 + 라벨 PDF
+        # =========================
+        with col_right:
+            st.markdown("### 🏷 부자재반입라벨 출력")
+
+            col_bc, col_unit = st.columns([3, 1])
+
+            with col_bc:
+                barcode_value = st.text_input(
+                    "부자재반입요청번호",
+                    placeholder="예: B202511-00120001",
+                    key="barcode_input",
+                )
+
+            with col_unit:
+                unit_value = st.text_input(
+                    "단위수량",
+                    key="unit_input",
+                )
+
+            pdf_labels = None
+            download_disabled = True
+            download_help = ""
+
+            if "라벨선택" not in df_full.columns:
+                st.error("라벨선택 컬럼을 찾을 수 없습니다.")
+            elif "품번" not in df_full.columns:
+                st.error("품번 컬럼이 없어 라벨 데이터를 만들 수 없습니다.")
+            else:
+                selected_parts = (
+                    df_full.loc[df_full["라벨선택"] == True, "품번"]
+                    .astype(str)
+                    .tolist()
+                )
+
+                required_cols = ["품명", "품번", "환입일"]
+                if not all(col in df_full.columns for col in required_cols):
+                    st.error("라벨 생성에 필요한 컬럼(품명, 품번, 환입일)이 부족합니다.")
+                else:
+                    if not barcode_value:
+                        download_help = "부자재반입요청번호를 입력하면 버튼이 활성화됩니다."
+                    elif not unit_value:
+                        download_help = "단위수량을 입력하면 버튼이 활성화됩니다."
+                    elif not selected_parts:
+                        download_help = "라벨을 출력할 자재를 한 개 이상 선택하세요."
+                    else:
+                        df_labels = df_full[
+                            df_full["품번"].astype(str).isin(selected_parts)
+                        ][required_cols].copy()
+
+                        if df_labels.empty:
+                            download_help = "선택한 자재에서 라벨에 사용할 데이터를 찾지 못했습니다."
+                        else:
+                            try:
+                                pdf_labels = generate_label_pdf(
+                                    df_labels,
+                                    barcode_value,
+                                    unit_value,
+                                )
+                                download_disabled = False
+                            except Exception as e:
+                                st.error(f"라벨 PDF 생성 중 오류: {e}")
+                                download_help = "라벨 PDF 생성 중 오류가 발생했습니다."
+
+            if download_help:
+                st.caption(download_help)
+
+            st.download_button(
+                "🏷 선택한 자재 바코드 라벨 PDF 만들기",
+                data=pdf_labels if pdf_labels is not None else b"",
+                file_name="부자재반입라벨.pdf",
+                mime="application/pdf",
+                disabled=download_disabled,
+                key="btn_make_labels",
+            )
+
+# ============================================================
+# 🧩 5. 공통자재 탭
+# ============================================================
+if menu == "🧩 공통자재":
+    st.subheader("🧩 공통자재 확인")
+
+    search_part = st.text_input(
+        "찾을 자재 품번을 입력하세요",
+        key="common_part_search",
+        placeholder="예: 자재 품번 입력"
+    )
+
+    if search_part:
+        df_bom = df_bom_raw.copy()
+
+        bom_item_col = pick_col(df_bom, "A", ["품목코드"])
+        bom_name_col = pick_col(df_bom, "B", ["품명"])
+        bom_part_col = pick_col(df_bom, "C", ["품번"])
+
+        if not all([bom_item_col, bom_name_col, bom_part_col]):
+            st.error("BOM 시트에서 품목코드(A), 품명(B), 품번(C) 컬럼을 찾지 못했습니다.")
+        else:
+            df_bom_hit = df_bom[df_bom[bom_part_col] == search_part].copy()
+
+            if df_bom_hit.empty:
+                st.info("해당 자재 품번을 사용하는 품목코드를 BOM에서 찾지 못했습니다.")
+            else:
+                df_bom_hit = df_bom_hit[[bom_item_col, bom_name_col]].drop_duplicates()
+                df_bom_hit.columns = ["완성품번", "품명"]
+
+                df_in = df_in_raw.copy()
+                in_fin_col = pick_col(df_in, "D", ["완성품번", "품목코드", "품번"])
+                in_req_date_col = pick_col(df_in, "K", ["요청날짜", "요청일"])
+
+                if in_fin_col is None or in_req_date_col is None:
+                    st.error("입고 시트에서 완성품번(D열) 또는 요청날짜(K열) 컬럼을 찾지 못했습니다.")
+                else:
+                    df_in[in_req_date_col] = pd.to_datetime(
+                        df_in[in_req_date_col], errors="coerce"
+                    ).dt.date
+
+                    today = date.today()
+                    result_rows = []
+
+                    for _, r in df_bom_hit.iterrows():
+                        item_code = r["완성품번"]
+                        name = r["품명"]
+
+                        sub = df_in[df_in[in_fin_col] == item_code].copy()
+                        sub = sub.dropna(subset=[in_req_date_col])
+
+                        if sub.empty:
+                            last_date = None
+                            days_diff = None
+                            mark_1w = ""
+                            mark_2w = ""
+                        else:
+                            # 가장 마지막(맨 아래) 행 기준 요청날짜
+                            sub = sub.sort_values(in_req_date_col)
+                            last_date = sub[in_req_date_col].iloc[-1]
+                            days_diff = (today - last_date).days
+
+                            if days_diff <= 7:
+                                mark_1w = "V"
+                                mark_2w = ""
+                            elif days_diff <= 14:
+                                mark_1w = ""
+                                mark_2w = "V"
+                            else:
+                                mark_1w = ""
+                                mark_2w = ""
+
+                        result_rows.append(
+                            {
+                                "완성품번": item_code,
+                                "품명": name,
+                                "불출요청일": last_date,
+                                "1주 이내": mark_1w,
+                                "2주 이내": mark_2w,
+                            }
+                        )
+
+                    df_result = pd.DataFrame(result_rows)
+
+                    if df_result.empty:
+                        st.info("조건에 해당하는 데이터가 없습니다.")
+                    else:
+                        # 최신 불출요청일이 위로 오도록 정렬 (선택사항)
+                        df_result = df_result.sort_values(
+                            by="불출요청일", ascending=False, na_position="last"
+                        ).reset_index(drop=True)
+
+                        df_result_styled = df_result.style.set_properties(
+                            subset=["1주 이내", "2주 이내"],
+                            **{"text-align": "center"}
+                        )
+
+                        st.dataframe(df_result, use_container_width=True)
+
+# ============================================================
+# 🏷 6. 라벨 수량 계산 탭
+# ============================================================
+if menu == "🏷 라벨 수량 계산":
+    st.subheader("🏷 라벨 수량 계산기")
+
+    # -----------------------------
+    # 0) S3에서 라벨 DB를 먼저 시도해서 읽기
+    # -----------------------------
+    if "label_db" not in st.session_state:
+        df_label_s3 = load_label_db_from_s3()
+        if df_label_s3.empty:
+            # 아직 S3에 라벨 DB가 없는 상태 → 초기 1회 엑셀 업로드 경로
+            st.info("라벨 DB가 아직 없습니다. 아래에서 기존 라벨 엑셀 파일을 한 번 업로드해 초기화하세요.")
+
+            label_file = st.file_uploader(
+                "라벨 DB 초기 엑셀 업로드 (라벨 및 스티커 지관무게+수량 계산기_*.xlsx)",
+                type=["xlsx", "xlsm"],
+                key="label_db_init_upload",
+            )
+
+            if label_file is not None:
+                df_init = parse_label_db(label_file)
+                if df_init.empty:
+                    st.error("엑셀에서 읽어온 라벨 데이터가 없습니다. 시트/헤더 위치를 다시 확인해주세요.")
+                else:
+                    # S3에 저장 + 세션에 저장
+                    save_label_db_to_s3(df_init)
+                    st.session_state["label_db"] = df_init
+                    st.success(f"라벨 DB를 {len(df_init)}행으로 초기화했습니다. (이제부터는 엑셀 업로드 없이 사용 가능합니다.)")
+                    st.dataframe(
+                        df_init[["샘플번호", "품번", "품명", "구분"]].head(20),
+                        use_container_width=True,
+                    )
+            st.stop()
+        else:
+            # S3에 이미 라벨 DB가 있음 → 세션에 올려서 사용
+            st.session_state["label_db"] = df_label_s3
+
+    # 여기까지 오면 라벨 DB가 세션에 존재
+    df_label = st.session_state["label_db"]
+
+    # 혹시 normalize 함수가 있다면 한 번 정리
+    try:
+        df_label = normalize_label_df(df_label)
+        st.session_state["label_db"] = df_label
+    except NameError:
+        # normalize_label_df 아직 안 쓰는 경우는 그냥 넘어감
+        pass
+
+    # =======================================================
+    # 1️⃣ 라벨 수량 계산기 (라벨 선택 → 값 자동 채우기)
+    # =======================================================
+    st.markdown("### 1️⃣ 라벨 수량 계산")
+
+    # 기본값 키가 없으면 0으로 초기화
+    st.session_state.setdefault("label_core_weight", 0.0)       # 지관무게
+    st.session_state.setdefault("label_base_count", 1.0)        # 기준샘플 매수
+    st.session_state.setdefault("label_sample_weight", 0.0)     # 샘플무게
+    st.session_state.setdefault("label_film_weight", 0.0)       # 필름무게
+
+    # ---------- (1) 라벨 품번 검색 & 선택 ----------
+    st.markdown("#### 라벨 품번 검색 / 선택")
+
+    search_text = st.text_input(
+        "라벨 품번 또는 품명으로 검색",
+        key="label_calc_search",
+        placeholder="예: 2KKMMSK-027A14, 크림, 토너 등",
+    )
+
+    df_hit = pd.DataFrame()
+    selected_row = None
+
+    if search_text:
+        mask = (
+            df_label.get("품번", "").astype(str).str.contains(search_text, na=False)
+            | df_label.get("품명", "").astype(str).str.contains(search_text, na=False)
+        )
+        df_hit = df_label.loc[mask].copy()
+
+        if df_hit.empty:
+            st.caption("검색 조건에 맞는 라벨 품목이 없습니다.")
+        else:
+            # 사용자에게 보여줄 최소 컬럼만 (품번/품명/구분)
+            show_cols = [c for c in ["품번", "품명", "구분"] if c in df_hit.columns]
+            st.dataframe(
+                df_hit[show_cols].head(50),
+                use_container_width=True,
+                height=220,
+            )
+
+            # 선택 옵션 만들기
+            options = []
+            opt_map = {}
+            for idx, row in df_hit.head(50).iterrows():
+                part = str(row.get("품번", ""))
+                name = str(row.get("품명", ""))
+                gubun = str(row.get("구분", ""))
+                label = f"{part} | {name} | {gubun}"
+                options.append(label)
+                opt_map[label] = idx
+
+            selected_label = st.selectbox(
+                "계산에 사용할 라벨 선택",
+                ["선택 안 함"] + options,
+                key="label_calc_selectbox",
+            )
+
+            if selected_label != "선택 안 함":
+                sel_idx = opt_map[selected_label]
+                selected_row = df_hit.loc[sel_idx]
+
+                # 🔹 DB에서 값 가져오기
+                core_w = safe_num(selected_row.get("지관무게", 0))
+                est_w = safe_num(selected_row.get("추정값", 0))
+                sample_w = safe_num(selected_row.get("샘플무게", 0))
+                base_cnt = parse_label_sample_count(selected_row.get("기준샘플", ""))
+
+                # 지관무게가 없으면 추정값 사용
+                if core_w <= 0 and est_w > 0:
+                    core_w = est_w
+
+                # 세션에 주입 → 아래 number_input 기본값으로 사용
+                st.session_state["label_core_weight"] = float(core_w)
+                st.session_state["label_sample_weight"] = float(sample_w)
+                st.session_state["label_base_count"] = float(base_cnt)
+
+                st.caption(
+                    f"선택된 라벨의 지관무게 / 샘플무게 / 기준샘플(매수)을 계산기에 반영했습니다."
+                )
+
+    # ---------- (2) 실제 계산 입력 영역 ----------
+    st.markdown("#### 계산 입력")
+
+    col_calc1, col_calc2 = st.columns(2)
+
+    with col_calc1:
+        st.session_state.setdefault("label_film_weight", 0.0)
+        film_weight = st.number_input(
+            "필름무게 (g)",
+            min_value=0.0,
+            step=0.1,
+            key="label_film_weight",
+        )
+
+        core_weight = st.number_input(
+            "지관무게 (g)",
+            min_value=0.0,
+            step=0.1,
+            key="label_core_weight",
+        )
+
+    with col_calc2:
+        base_count = st.number_input(
+            "기준샘플 매수 (장 수)",
+            min_value=0.0,
+            step=1.0,
+            key="label_base_count",
+        )
+
+        sample_weight = st.number_input(
+            "샘플무게 (g)",
+            min_value=0.0,
+            step=0.01,
+            key="label_sample_weight",
+        )
+
+    st.markdown("#### 계산 결과")
+
+    result = None
+    if sample_weight > 0:
+        try:
+            result = (film_weight - core_weight) / sample_weight * base_count
+        except Exception:
+            result = None
+
+    if result is not None:
+        st.success(f"계산된 수량: **{result:,.0f} 매**")
+    else:
+        st.info("샘플무게(g)가 0보다 커야 계산을 할 수 있습니다.")
+
+    # =======================================================
+    # 2️⃣ 새 라벨 품목 추가하기 (계산기 바로 아래)
+    # =======================================================
+    with st.expander("➕ 새 라벨 품목 추가하기", expanded=False):
+        st.caption("BOM 시트의 품번(C열)을 부분일치로 검색해서 품명을 확인한 뒤, 새 라벨 품목을 DB에 추가합니다.")
+
+        # --- BOM 검색 (가능한 경우에만) ---
+        if "df_bom_raw" in globals():
+            df_bom_for_label = df_bom_raw.copy()
+
+            # ✅ BOM 품번: C열
+            bom_part_col = pick_col(df_bom_for_label, "C", ["품번"])
+            # BOM의 품명 컬럼 (D열 우선, 없으면 B열)
+            bom_name_col = pick_col(df_bom_for_label, "D", ["품명"])
+            if bom_name_col is None:
+                bom_name_col = pick_col(df_bom_for_label, "B", ["품명"])
+
+            new_bom_search = st.text_input(
+                "BOM 자재 품번 검색 (부분일치, C열 기준)",
+                key="label_new_bom_search",
+                placeholder="예: 027A14, 038B12 등",
+            )
+
+            df_bom_hit = pd.DataFrame()
+            if new_bom_search and bom_part_col and bom_name_col:
+                mask_bom = df_bom_for_label[bom_part_col].astype(str).str.contains(
+                    new_bom_search, na=False
+                )
+
+                df_bom_hit = df_bom_for_label.loc[mask_bom, [bom_part_col, bom_name_col]].copy()
+
+                # 🔹 품명의 끝부분에 "_" 이후에 '라벨' 또는 '엠블럼' 이 포함된 행만 남기기
+                def _label_like(name: str) -> bool:
+                    s = str(name)
+                    if "_" not in s:
+                        return False
+                    tail = s.split("_", 1)[1]
+                    return ("라벨" in tail) or ("엠블럼" in tail)
+
+                if not df_bom_hit.empty:
+                    df_bom_hit = df_bom_hit[df_bom_hit[bom_name_col].apply(_label_like)]
+
+                df_bom_hit = df_bom_hit.drop_duplicates().head(50)
+
+                if not df_bom_hit.empty:
+                    df_bom_hit = df_bom_hit.rename(
+                        columns={bom_part_col: "BOM_품번", bom_name_col: "BOM_품명"}
+                    )
+                    st.dataframe(
+                        df_bom_hit,
+                        use_container_width=True,
+                        height=200,
+                    )
+
+                    # 🔸 검색 결과 중 하나 선택 → 아래 입력 기본값으로 사용
+                    options = []
+                    opt_map = {}
+                    for idx, row in df_bom_hit.iterrows():
+                        p = str(row["BOM_품번"])
+                        n = str(row["BOM_품명"])
+                        label = f"{p} | {n}"
+                        options.append(label)
+                        opt_map[label] = idx
+
+                    selected_bom = st.selectbox(
+                        "라벨로 등록할 품목 선택",
+                        ["선택 안 함"] + options,
+                        key="label_new_bom_select",
+                    )
+
+                    if selected_bom != "선택 안 함":
+                        sel_idx = opt_map[selected_bom]
+                        sel_row = df_bom_hit.loc[sel_idx]
+                        # 선택된 BOM 품번/품명을 아래 입력값 기본으로 주입
+                        st.session_state["label_new_part"] = str(sel_row["BOM_품번"])
+                        st.session_state["label_new_name"] = str(sel_row["BOM_품명"])
+                else:
+                    st.caption("검색 조건에 맞는 BOM 행이 없습니다.")
+            elif not bom_part_col or not bom_name_col:
+                st.warning("BOM 시트에서 품번(C열) 또는 품명(D열/B열) 컬럼을 찾지 못했습니다.")
+        else:
+            st.info("BOM 시트 검색은 메인 부자재 DB 업로드 후 사용 가능합니다.")
+
+        st.markdown("#### 실제로 DB에 저장할 라벨 정보 입력")
+
+        # 선택 가능한 구분 목록
+        if "LABEL_TYPES" in globals():
+            gubun_choices = LABEL_TYPES
+        elif "구분" in df_label.columns:
+            gubun_choices = sorted(df_label["구분"].dropna().unique().tolist())
+        else:
+            gubun_choices = []
+
+        new_part = st.text_input(
+            "라벨 품번 (DB에 저장할 실제 품번)",
+            key="label_new_part",
+            placeholder="예: 2KKMMSK-027A14-xxx",
+        )
+        new_name = st.text_input(
+            "품명",
+            key="label_new_name",
+        )
+        new_gubun = st.selectbox(
+            "구분",
+            options=gubun_choices if gubun_choices else ["(직접 입력)"],
+            key="label_new_gubun",
+        )
+
+        col_dim1, col_dim2, col_dim3 = st.columns(3)
+        with col_dim1:
+            new_od = st.number_input(
+                "외경 (mm)",
+                min_value=0.0,
+                step=0.1,
+                key="label_new_od",
+            )
+        with col_dim2:
+            new_id = st.number_input(
+                "내경 (mm)",
+                min_value=0.0,
+                step=0.1,
+                key="label_new_id",
+            )
+        with col_dim3:
+            new_h = st.number_input(
+                "높이 (mm)",
+                min_value=0.0,
+                step=0.1,
+                key="label_new_h",
+            )
+
+        col_sample1, col_sample2 = st.columns(2)
+        with col_sample1:
+            new_base_str = st.text_input(
+                "기준샘플 (예: '4매', '2매(아이마크)')",
+                key="label_new_base_str",
+                placeholder="예: 4매",
+            )
+        with col_sample2:
+            new_sample_weight = st.number_input(
+                "샘플무게 (g)",
+                min_value=0.0,
+                step=0.01,
+                key="label_new_sample_weight",
+            )
+
+        new_core_weight = st.number_input(
+            "실측 지관무게 (g, 선택입력)",
+            min_value=0.0,
+            step=0.1,
+            key="label_new_core_weight",
+        )
+
+        # 🔹 외경/내경/높이 → 측정값(추정값) 미리 보여주기
+        est_preview = None
+        if new_od > 0 and new_id > 0 and new_h > 0:
+            est_preview = 3.14 * new_h * ((new_od ** 2 - new_id ** 2) / 4.0) * 0.78
+            est_preview = round(est_preview, 2)
+            st.caption(f"계산된 지관 추정값(측정값): 약 **{est_preview} g**")
+
+        if st.button("✅ 입력 완료 (DB에 저장)", key="label_new_save_btn"):
+            # 필수값 체크
+            if not new_part or not new_name:
+                st.error("품번과 품명은 반드시 입력해야 합니다.")
+            elif new_od <= 0 or new_id <= 0 or new_h <= 0:
+                st.error("외경, 내경, 높이는 모두 0보다 큰 값이어야 합니다.")
+            elif new_sample_weight <= 0:
+                st.error("샘플무게(g)는 0보다 큰 값이어야 합니다.")
+            else:
+                # 추정값 계산
+                est_val = 3.14 * new_h * ((new_od ** 2 - new_id ** 2) / 4.0) * 0.78
+                est_val = round(est_val, 2)
+
+                # 오차: 실측 지관무게가 있으면 (추정값 - 실무게), 없으면 0
+                if new_core_weight > 0:
+                    err_val = est_val - new_core_weight
+                else:
+                    err_val = 0.0
+
+                # 새 행 구성 (parse_label_db 구조에 맞춤)
+                new_row = {
+                    "샘플번호": None,
+                    "품번": new_part,
+                    "품명": new_name,
+                    "구분": new_gubun if new_gubun != "(직접 입력)" else "",
+                    "지관무게": new_core_weight if new_core_weight > 0 else 0.0,
+                    "추정값": est_val,
+                    "오차": err_val,
+                    "외경": new_od,
+                    "내경": new_id,
+                    "높이": new_h,
+                    "1R무게": None,
+                    "기준샘플": new_base_str,
+                    "샘플무게": new_sample_weight,
+                }
+
+                df_label_new = pd.concat(
+                    [df_label, pd.DataFrame([new_row])],
+                    ignore_index=True,
+                )
+
+                try:
+                    df_label_new = normalize_label_df(df_label_new)
+                except NameError:
+                    pass
+
+                st.session_state["label_db"] = df_label_new
+                save_label_db_to_s3(df_label_new)
+
+                st.success(
+                    f"새 라벨 품목이 DB에 추가되었습니다. (품번: {new_part})"
+                )
+
+    # =======================================================
+    # 3️⃣ 라벨 DB 미리보기 / 삭제 / 저장
+    # =======================================================
+    with st.expander("📋 라벨 DB 미리보기 / 삭제 / 저장", expanded=False):
+        st.caption("라벨 DB를 확인하고, 필요 시 일부 행을 삭제하거나 전체를 엑셀로 다운로드할 수 있습니다.")
+
+        df_label = st.session_state["label_db"].copy()
+
+        # 미리보기용 컬럼
+        cols_preview = [c for c in ["샘플번호", "품번", "품명", "구분", "지관무게", "기준샘플", "샘플무게"] if c in df_label.columns]
+
+        # 삭제 체크박스 컬럼 추가
+        df_label_view = df_label.copy()
+        df_label_view["삭제"] = False
+
+        df_edit = st.data_editor(
+            df_label_view[cols_preview + ["삭제"]],
+            use_container_width=True,
+            num_rows="dynamic",
+            key="label_db_editor",
+        )
+
+        # 삭제 버튼
+        if st.button("🗑️ 선택 행 삭제 후 저장", key="label_db_delete_btn"):
+            if "삭제" in df_edit.columns:
+                df_after_del = df_label.copy()
+                # 삭제 체크 된 행의 인덱스를 찾아서 원본에서 제거
+                del_mask = df_edit["삭제"] == True
+                if del_mask.any():
+                    drop_idx = df_edit.index[del_mask]
+                    df_after_del = df_after_del.drop(index=drop_idx)
+                    df_after_del = df_after_del.reset_index(drop=True)
+
+                    st.session_state["label_db"] = df_after_del
+                    save_label_db_to_s3(df_after_del)
+                    st.success(f"선택한 {del_mask.sum()}개 행을 삭제하고 저장했습니다.")
+                else:
+                    st.info("삭제로 선택된 행이 없습니다.")
+            else:
+                st.error("삭제 컬럼을 찾을 수 없습니다.")
+
+        # 엑셀로 내보내기
+        excel_buf = io.BytesIO()
+        st.session_state["label_db"].to_excel(excel_buf, index=False, sheet_name="라벨DB")
+        excel_buf.seek(0)
+        st.download_button(
+            "📥 현재 라벨 DB 엑셀로 다운로드",
+            data=excel_buf,
+            file_name="라벨_DB_현재버전.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="label_db_download_btn",
+        )
 
 
