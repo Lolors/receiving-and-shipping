@@ -16,7 +16,8 @@ from botocore.exceptions import ClientError
 
 S3_BUCKET = "rec-and-ship"
 S3_KEY_EXCEL = "bulk-ledger.xlsx"   # 기존 엑셀
-S3_KEY_DB    = "inout.db"           # 새로 만들 SQLite DB 파일명
+S3_KEY_DB    = "inout.db"           # 부자재 메인 DB
+S3_KEY_LABEL = "label_db.csv"       # 🔸 라벨 전용 DB (CSV)
 
 def get_s3_client():
     try:
@@ -47,6 +48,47 @@ def load_file_from_s3():
             return None
         st.error(f"S3에서 파일을 가져오는 중 오류가 발생했습니다: {e}")
         return None
+
+@st.cache_data(show_spinner=True)
+def load_label_db_from_s3() -> pd.DataFrame:
+    """
+    S3에서 라벨 DB CSV를 읽어 DataFrame으로 반환.
+    없으면 빈 DF 반환.
+    """
+    if s3_client is None:
+        return pd.DataFrame()
+
+    try:
+        obj = s3_client.get_object(Bucket=S3_BUCKET, Key=S3_KEY_LABEL)
+        data = obj["Body"].read().decode("utf-8-sig")
+        df = pd.read_csv(io.StringIO(data))
+        return df
+    except ClientError as e:
+        code = e.response["Error"]["Code"]
+        if code in ("NoSuchKey", "404"):
+            # 아직 라벨 DB를 만든 적이 없음
+            return pd.DataFrame()
+        st.error(f"S3에서 라벨 DB를 가져오는 중 오류가 발생했습니다: {e}")
+        return pd.DataFrame()
+
+
+def save_label_db_to_s3(df: pd.DataFrame):
+    """
+    현재 라벨 DB DataFrame을 S3에 CSV로 저장.
+    """
+    if s3_client is None:
+        st.error("S3 클라이언트가 없습니다. 라벨 DB를 저장할 수 없습니다.")
+        return
+
+    csv_buf = io.StringIO()
+    df.to_csv(csv_buf, index=False)
+    s3_client.put_object(
+        Bucket=S3_BUCKET,
+        Key=S3_KEY_LABEL,
+        Body=csv_buf.getvalue().encode("utf-8-sig"),
+    )
+    # 캐시된 라벨 DB 무효화
+    load_label_db_from_s3.clear()
 
 
 # 🔹🔹🔹 여기 아래에 새 함수 2개 추가 🔹🔹🔹
@@ -79,9 +121,6 @@ def get_db_connection(db_bytes: bytes):
     tmp.flush()
     conn = sqlite3.connect(tmp.name, check_same_thread=False)
     return conn
-
-import io
-import tempfile
 
 REQUIRED_SHEETS = ["입고", "작업지시", "수주", "BOM", "재고", "생산실적", "불량"]
 
@@ -2946,3 +2985,86 @@ if menu == "🧩 공통자재":
                         )
 
                         st.dataframe(df_result, use_container_width=True)
+
+# ============================================================
+# 🏷 6. 라벨 수량 계산 탭
+# ============================================================
+if menu == "🏷 라벨 수량 계산":
+    st.subheader("🏷 라벨 수량 계산기")
+
+    st.markdown(
+        """
+        **사용 흐름**
+
+        1. (최초 1회) 기존 라벨 엑셀을 업로드해서 라벨 DB를 초기화한다.  
+        2. 그 이후에는 엑셀 업로드 없이, 이 탭에서 라벨 정보를 추가/수정하고 S3에 저장한다.  
+        3. 필요할 때 언제든 현재 라벨 DB를 엑셀로 다운로드할 수 있다.  
+        """
+    )
+
+    # -----------------------------
+    # 0) S3에서 라벨 DB를 먼저 시도해서 읽기
+    # -----------------------------
+    if "label_db" not in st.session_state:
+        df_label_s3 = load_label_db_from_s3()
+        if df_label_s3.empty:
+            # 아직 S3에 라벨 DB가 없는 상태 → 초기 1회 엑셀 업로드 경로
+            st.info("라벨 DB가 아직 없습니다. 아래에서 기존 라벨 엑셀 파일을 한 번 업로드해 초기화하세요.")
+
+            label_file = st.file_uploader(
+                "라벨 DB 초기 엑셀 업로드 (라벨 및 스티커 지관무게+수량 계산기_*.xlsx)",
+                type=["xlsx", "xlsm"],
+                key="label_db_init_upload",
+            )
+
+            if label_file is not None:
+                df_init = parse_label_db(label_file)
+                if df_init.empty:
+                    st.error("엑셀에서 읽어온 라벨 데이터가 없습니다. 시트/헤더 위치를 다시 확인해주세요.")
+                else:
+                    # S3에 저장 + 세션에 저장
+                    save_label_db_to_s3(df_init)
+                    st.session_state["label_db"] = df_init
+                    st.success(f"라벨 DB를 {len(df_init)}행으로 초기화했습니다. (이제부터는 엑셀 업로드 없이 사용 가능합니다.)")
+                    st.dataframe(
+                        df_init[["샘플번호", "품번", "품명", "구분"]].head(20),
+                        use_container_width=True,
+                    )
+            st.stop()
+        else:
+            # S3에 이미 라벨 DB가 있음 → 세션에 올려서 사용
+            st.session_state["label_db"] = df_label_s3
+
+    # 여기까지 오면 라벨 DB가 세션에 존재
+    df_label = st.session_state["label_db"]
+
+    with st.expander("라벨 DB 미리보기 / 저장", expanded=False):
+        cols_preview = [c for c in ["샘플번호", "품번", "품명", "구분", "지관무게", "기준샘플", "샘플무게"] if c in df_label.columns]
+        st.dataframe(df_label[cols_preview], use_container_width=True, height=300)
+
+        # 편집용 data_editor (원하면 전체 편집)
+        df_edit = st.data_editor(
+            df_label,
+            use_container_width=True,
+            num_rows="dynamic",
+            key="label_db_editor",
+        )
+
+        # 저장 버튼: 세션 + S3 동시 반영
+        if st.button("💾 라벨 DB 저장 (S3 반영)", key="label_db_save_btn"):
+            st.session_state["label_db"] = df_edit.copy()
+            save_label_db_to_s3(st.session_state["label_db"])
+            st.success("라벨 DB를 S3에 저장했습니다.")
+
+        # 엑셀로 내보내기
+        excel_buf = io.BytesIO()
+        df_label.to_excel(excel_buf, index=False, sheet_name="라벨DB")
+        excel_buf.seek(0)
+        st.download_button(
+            "📥 현재 라벨 DB 엑셀로 다운로드",
+            data=excel_buf,
+            file_name="라벨_DB_현재버전.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="label_db_download_btn",
+        )
+
