@@ -440,6 +440,75 @@ def parse_label_sample_count(text: str) -> float:
     except Exception:
         return 1.0
 
+# 라벨 DF를 한 번 정리해 주는 공통 함수
+def normalize_label_df(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    라벨 DB DataFrame을 표준 형태로 정리한다.
+
+    - 필수 컬럼이 없으면 추가
+    - 숫자 컬럼은 safe_num으로 float 변환
+    - 외경/내경/높이가 있는데 추정값이 없거나 0이면 공식으로 재계산
+    - 지관무게가 있으면 오차(추정값-지관무게) 재계산
+    """
+    df = df.copy()
+
+    # 필수 컬럼 세트
+    required_cols = [
+        "샘플번호",
+        "품번",
+        "품명",
+        "구분",
+        "지관무게",
+        "추정값",
+        "오차",
+        "외경",
+        "내경",
+        "높이",
+        "1R무게",
+        "기준샘플",
+        "샘플무게",
+    ]
+
+    for c in required_cols:
+        if c not in df.columns:
+            df[c] = None
+
+    # 숫자 컬럼은 safe_num으로 통일
+    num_cols = ["지관무게", "추정값", "오차", "외경", "내경", "높이", "1R무게", "샘플무게"]
+    for c in num_cols:
+        df[c] = df[c].apply(safe_num)
+
+    # 구분이 있으면 LABEL_TYPES 안에 있는 값만 남기기 (있을 때만)
+    if "구분" in df.columns and "LABEL_TYPES" in globals():
+        mask = df["구분"].isin(LABEL_TYPES) | df["구분"].isna()
+        df = df[mask]
+
+    # 추정값 재계산 (외경/내경/높이가 있을 때, 추정값이 0 또는 NaN인 경우)
+    def _recalc_est(row):
+        od = safe_num(row["외경"])
+        inner = safe_num(row["내경"])
+        h = safe_num(row["높이"])
+        est = safe_num(row["추정값"])
+
+        if od > 0 and inner > 0 and h > 0 and est <= 0:
+            est = 3.14 * h * ((od ** 2 - inner ** 2) / 4.0) * 0.78
+        return round(est, 2) if est != 0 else est
+
+    df["추정값"] = df.apply(_recalc_est, axis=1)
+
+    # 오차 재계산 (지관무게가 있을 때만)
+    def _recalc_err(row):
+        core = safe_num(row["지관무게"])
+        est = safe_num(row["추정값"])
+        if core > 0 and est > 0:
+            return est - core
+        return safe_num(row["오차"])
+
+    df["오차"] = df.apply(_recalc_err, axis=1)
+
+    df = df.reset_index(drop=True)
+    return df
+
 
 # 화면에 보이는 환입 예상재고 테이블 컬럼 순서
 VISIBLE_COLS = [
