@@ -2388,15 +2388,23 @@ if menu == "↩️ 환입 관리":
                         )
 
                         if stock_part_col and stock_qty_col:
-                            stock_map = dict(
-                                zip(
-                                    df_stock_raw[stock_part_col].astype(str),
-                                    df_stock_raw[stock_qty_col].apply(safe_num),
-                                )
-                            )
+                            # 🔹 품번별 실재고수량 합계로 ERP재고 계산
+                            tmp = df_stock_raw.copy()
+                            tmp["_품번_key"] = tmp[stock_part_col].astype(str)
+                            tmp["_실재고수량"] = tmp[stock_qty_col].apply(safe_num)
+
+                            # 품번별 합산
+                            stock_sum = tmp.groupby("_품번_key")["_실재고수량"].sum()
+
+                            # df_full의 품번 기준으로 매핑
                             df_full["ERP재고"] = (
-                                df_full["품번"].astype(str).map(stock_map).fillna(0)
+                                df_full["품번"].astype(str).map(stock_sum).fillna(0)
                             )
+                        else:
+                            st.warning(
+                                "재고 시트에서 품번 또는 실재고수량 컬럼을 찾을 수 없습니다."
+                            )
+
                         else:
                             st.warning(
                                 "재고 시트에서 품번 또는 실재고수량 컬럼을 찾을 수 없습니다."
