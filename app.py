@@ -3203,6 +3203,7 @@ if menu == "🏷 라벨 수량 계산":
     # 0-1) 라벨 DB 정규화
     #   - 외경 / 내경 / 높이 컬럼 보장
     #   - 외경/내경/높이로 "추정값" 재계산 (없으면 기존값 유지)
+    #   🔥 성능을 위해: 최초 1회 or DB 수정 시에만 전체 재계산
     # -----------------------------
     def normalize_label_df(df: pd.DataFrame) -> pd.DataFrame:
         df = df.copy()
@@ -3223,7 +3224,7 @@ if menu == "🏷 라벨 수량 계산":
             od = safe_num(row.get("외경", 0))
             idv = safe_num(row.get("내경", 0))
             if h > 0 and od > 0 and idv > 0:
-                # 3.14 * 높이 * ((외경^2 - 내경^2) / 4) * 0.78
+                # 3.14 * 높이 * ((외경^2 - 내경^2) / 4.0) * 0.78
                 est = 3.14 * h * ((od ** 2 - idv ** 2) / 4.0) * 0.78
                 return round(est, 2)
             # 외경/내경/높이 없으면 기존 값 유지
@@ -3233,8 +3234,14 @@ if menu == "🏷 라벨 수량 계산":
 
         return df
 
-    df_label = normalize_label_df(df_label)
-    st.session_state["label_db"] = df_label  # 정규화된 걸로 세션 갱신
+    # ✅ 라벨 탭에 처음 들어왔을 때만 전체 정규화
+    if not st.session_state.get("label_db_normalized", False):
+        df_label = normalize_label_df(df_label)
+        st.session_state["label_db"] = df_label
+        st.session_state["label_db_normalized"] = True
+    else:
+        # 이미 정규화된 버전 그대로 사용
+        df_label = st.session_state["label_db"].copy()
 
     # ==========
     # 1. 라벨 수량 계산기 (맨 위)
@@ -3631,6 +3638,7 @@ if menu == "🏷 라벨 수량 계산":
                 # 정규화 + 세션/ S3 저장
                 df_label_new = normalize_label_df(df_label_new)
                 st.session_state["label_db"] = df_label_new
+                st.session_state["label_db_normalized"] = True  # 정규화 상태 플래그
                 save_label_db_to_s3(df_label_new)
 
                 st.success(
@@ -3652,31 +3660,46 @@ if menu == "🏷 라벨 수량 계산":
             ]
             if c in df_label.columns
         ]
-        st.caption("※ 아래 표는 조회용 미리보기입니다. 그 아래 data_editor에서 직접 수정할 수 있습니다.")
+        st.caption("※ 아래 표는 조회용 미리보기입니다. 그 아래에서 '편집 모드'를 켜면 전체 DB를 수정할 수 있습니다.")
         st.dataframe(
             df_label[cols_preview2].head(30),
             use_container_width=True,
             height=250,
         )
 
-        # 편집용 data_editor
-        df_edit = st.data_editor(
-            df_label,
-            use_container_width=True,
-            num_rows="dynamic",
-            key="label_db_editor",
+        # 🔹 기본값: 편집 안 할 때는 data_editor 자체를 만들지 않는다 (속도↑)
+        df_edit = df_label
+
+        edit_mode = st.checkbox(
+            "✏️ 라벨 DB 전체 편집 모드 켜기 (느려질 수 있어요)",
+            key="label_db_edit_mode",
+            value=False,
         )
 
-        # 저장 버튼: 세션 + S3 동시 반영
-        if st.button("💾 라벨 DB 저장 (S3 반영)", key="label_db_save_btn"):
-            df_edit_norm = normalize_label_df(df_edit)
-            st.session_state["label_db"] = df_edit_norm
-            save_label_db_to_s3(df_edit_norm)
-            st.success("라벨 DB를 S3에 저장했습니다.")
+        if edit_mode:
+            # 편집용 data_editor (무거움 → 필요할 때만 생성)
+            df_edit = st.data_editor(
+                df_label,
+                use_container_width=True,
+                num_rows="dynamic",
+                key="label_db_editor",
+            )
 
-        # 엑셀로 내보내기
+            # 저장 버튼: 세션 + S3 동시 반영
+            if st.button("💾 라벨 DB 저장 (S3 반영)", key="label_db_save_btn"):
+                df_edit_norm = normalize_label_df(df_edit)
+                st.session_state["label_db"] = df_edit_norm
+                st.session_state["label_db_normalized"] = True  # 다시 정규화됨
+                save_label_db_to_s3(df_edit_norm)
+                st.success("라벨 DB를 S3에 저장했습니다.")
+        else:
+            st.caption("👉 전체 DB를 직접 수정하려면 위 체크박스를 켜세요. (숫자 입력 속도를 위해 기본은 OFF)")
+
+        # 엑셀로 내보내기 (편집 중이면 편집된 내용, 아니면 현재 DB 기준)
+        excel_source = df_edit if edit_mode else df_label
+
         excel_buf = io.BytesIO()
-        df_edit.to_excel(excel_buf, index=False, sheet_name="라벨DB")
+        excel_source.to_excel(excel_buf, index=False, sheet_name="라벨DB")
         excel_buf.seek(0)
         st.download_button(
             "📥 현재 라벨 DB 엑셀로 다운로드",
