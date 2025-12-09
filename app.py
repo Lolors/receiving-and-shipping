@@ -3107,11 +3107,12 @@ if menu == "🏷 라벨 수량 계산":
     st.subheader("🏷 라벨 수량 계산기")
 
     # -----------------------------
-    # 0) S3 / 세션에서 라벨 DB 로딩
+    # 0) S3에서 라벨 DB를 먼저 시도해서 읽기
     # -----------------------------
     if "label_db" not in st.session_state:
         df_label_s3 = load_label_db_from_s3()
         if df_label_s3.empty:
+            # 아직 S3에 라벨 DB가 없는 상태 → 초기 1회 엑셀 업로드 경로
             st.info("라벨 DB가 아직 없습니다. 아래에서 기존 라벨 엑셀 파일을 한 번 업로드해 초기화하세요.")
 
             label_file = st.file_uploader(
@@ -3125,163 +3126,172 @@ if menu == "🏷 라벨 수량 계산":
                 if df_init.empty:
                     st.error("엑셀에서 읽어온 라벨 데이터가 없습니다. 시트/헤더 위치를 다시 확인해주세요.")
                 else:
+                    # S3에 저장 + 세션에 저장
                     save_label_db_to_s3(df_init)
                     st.session_state["label_db"] = df_init
-                    st.success(
-                        f"라벨 DB를 {len(df_init)}행으로 초기화했습니다. "
-                        "(이제부터는 엑셀 업로드 없이 사용 가능합니다.)"
-                    )
+                    st.success(f"라벨 DB를 {len(df_init)}행으로 초기화했습니다. (이제부터는 엑셀 업로드 없이 사용 가능합니다.)")
                     st.dataframe(
                         df_init[["샘플번호", "품번", "품명", "구분"]].head(20),
                         use_container_width=True,
                     )
             st.stop()
         else:
+            # S3에 이미 라벨 DB가 있음 → 세션에 올려서 사용
             st.session_state["label_db"] = df_label_s3
 
-    # 여기까지 오면 df_label 존재
-    df_label: pd.DataFrame = st.session_state["label_db"]
-    df_label = normalize_label_df(df_label)  # 혹시 모를 컬럼 정리
-    st.session_state["label_db"] = df_label
+    # 여기까지 오면 라벨 DB가 세션에 존재
+    df_label = st.session_state["label_db"]
 
-    # -----------------------------
-    # 1) 라벨 수량 계산기
-    # -----------------------------
-    st.markdown("### 🔢 수량 계산")
+    # 혹시 normalize 함수가 있다면 한 번 정리
+    try:
+        df_label = normalize_label_df(df_label)
+        st.session_state["label_db"] = df_label
+    except NameError:
+        # normalize_label_df 아직 안 쓰는 경우는 그냥 넘어감
+        pass
 
-    col_calc_left, col_calc_right = st.columns([2, 1])
+    # =======================================================
+    # 1️⃣ 라벨 수량 계산기 (라벨 선택 → 값 자동 채우기)
+    # =======================================================
+    st.markdown("### 1️⃣ 라벨 수량 계산")
 
-    with col_calc_left:
-        calc_search = st.text_input(
-            "라벨 품번 검색 (부분일치, '-' 뒤 기준)",
-            key="label_calc_search",
-            placeholder="예: 027A14 → 2KKMMSK-027A14-xxx 등을 찾음",
+    # 기본값 키가 없으면 0으로 초기화
+    st.session_state.setdefault("label_core_weight", 0.0)       # 지관무게
+    st.session_state.setdefault("label_base_count", 1.0)        # 기준샘플 매수
+    st.session_state.setdefault("label_sample_weight", 0.0)     # 샘플무게
+    st.session_state.setdefault("label_film_weight", 0.0)       # 필름무게
+
+    # ---------- (1) 라벨 품번 검색 & 선택 ----------
+    st.markdown("#### 라벨 품번 검색 / 선택")
+
+    search_text = st.text_input(
+        "라벨 품번 또는 품명으로 검색",
+        key="label_calc_search",
+        placeholder="예: 2KKMMSK-027A14, 크림, 토너 등",
+    )
+
+    df_hit = pd.DataFrame()
+    selected_row = None
+
+    if search_text:
+        mask = (
+            df_label.get("품번", "").astype(str).str.contains(search_text, na=False)
+            | df_label.get("품명", "").astype(str).str.contains(search_text, na=False)
         )
+        df_hit = df_label.loc[mask].copy()
 
-        selected_row = None
+        if df_hit.empty:
+            st.caption("검색 조건에 맞는 라벨 품목이 없습니다.")
+        else:
+            # 사용자에게 보여줄 최소 컬럼만 (품번/품명/구분)
+            show_cols = [c for c in ["품번", "품명", "구분"] if c in df_hit.columns]
+            st.dataframe(
+                df_hit[show_cols].head(50),
+                use_container_width=True,
+                height=220,
+            )
 
-        if calc_search:
-            search_key = calc_search.split("-")[-1].strip()
-            if search_key:
-                mask_label = df_label["품번"].astype(str).str.contains(search_key, na=False)
-                df_hit_calc = df_label.loc[mask_label].copy()
+            # 선택 옵션 만들기
+            options = []
+            opt_map = {}
+            for idx, row in df_hit.head(50).iterrows():
+                part = str(row.get("품번", ""))
+                name = str(row.get("품명", ""))
+                gubun = str(row.get("구분", ""))
+                label = f"{part} | {name} | {gubun}"
+                options.append(label)
+                opt_map[label] = idx
 
-                if df_hit_calc.empty:
-                    st.info("해당 조건에 맞는 라벨 품목이 없습니다.")
-                else:
-                    df_hit_calc = df_hit_calc.reset_index().rename(columns={"index": "_orig_index"})
-                    options = [
-                        f"{row['품번']} | {row['품명']} ({row.get('구분', '')})"
-                        for _, row in df_hit_calc.iterrows()
-                    ]
-                    selected_opt = st.selectbox(
-                        "검색 결과에서 사용할 라벨 선택",
-                        options=options,
-                        key="label_calc_select",
-                    )
-                    sel_idx = options.index(selected_opt)
-                    selected_row = df_hit_calc.iloc[sel_idx]
+            selected_label = st.selectbox(
+                "계산에 사용할 라벨 선택",
+                ["선택 안 함"] + options,
+                key="label_calc_selectbox",
+            )
 
+            if selected_label != "선택 안 함":
+                sel_idx = opt_map[selected_label]
+                selected_row = df_hit.loc[sel_idx]
+
+                # 🔹 DB에서 값 가져오기
+                core_w = safe_num(selected_row.get("지관무게", 0))
+                est_w = safe_num(selected_row.get("추정값", 0))
+                sample_w = safe_num(selected_row.get("샘플무게", 0))
+                base_cnt = parse_label_sample_count(selected_row.get("기준샘플", ""))
+
+                # 지관무게가 없으면 추정값 사용
+                if core_w <= 0 and est_w > 0:
+                    core_w = est_w
+
+                # 세션에 주입 → 아래 number_input 기본값으로 사용
+                st.session_state["label_core_weight"] = float(core_w)
+                st.session_state["label_sample_weight"] = float(sample_w)
+                st.session_state["label_base_count"] = float(base_cnt)
+
+                st.caption(
+                    f"선택된 라벨의 지관무게 / 샘플무게 / 기준샘플(매수)을 계산기에 반영했습니다."
+                )
+
+    # ---------- (2) 실제 계산 입력 영역 ----------
+    st.markdown("#### 계산 입력")
+
+    col_calc1, col_calc2 = st.columns(2)
+
+    with col_calc1:
+        st.session_state.setdefault("label_film_weight", 0.0)
         film_weight = st.number_input(
             "필름무게 (g)",
             min_value=0.0,
             step=0.1,
-            key="label_calc_film_weight",
+            key="label_film_weight",
         )
 
-    with col_calc_right:
-        core_weight_db = 0.0
-        est_core_db = 0.0
-        sample_weight_db = 0.0
-        sample_count_db = 0.0
-        label_info_text = "라벨 정보를 선택하면 여기에 표시됩니다."
-
-        if selected_row is not None:
-            part = str(selected_row.get("품번", ""))
-            name = str(selected_row.get("품명", ""))
-            gubun = str(selected_row.get("구분", ""))
-
-            core_weight_db = safe_num(selected_row.get("지관무게", 0.0))
-            est_core_db = safe_num(selected_row.get("추정값", 0.0))
-
-            # ✅ 지관무게가 없으면 추정값 사용
-            if core_weight_db <= 0 and est_core_db > 0:
-                core_weight_default = est_core_db
-                core_source = "추정값 사용"
-            else:
-                core_weight_default = core_weight_db
-                core_source = "실측 지관무게 사용"
-
-            sample_weight_db = safe_num(selected_row.get("샘플무게", 0.0))
-            sample_count_db = parse_label_sample_count(selected_row.get("기준샘플", ""))
-
-            label_info_text = (
-                f"**품번**: {part}\n\n"
-                f"**품명**: {name}\n\n"
-                f"**구분**: {gubun}\n\n"
-                f"**지관무게(실측)**: {core_weight_db:.2f} g\n"
-                f"**지관무게(추정값)**: {est_core_db:.2f} g\n"
-                f"→ 현재 계산에 사용할 값: **{core_weight_default:.2f} g** ({core_source})\n\n"
-                f"**기준샘플**: {selected_row.get('기준샘플', '')} "
-                f"(약 {sample_count_db:g} 매)\n"
-                f"**샘플무게**: {sample_weight_db:.2f} g"
-            )
-
-        st.markdown(label_info_text)
-
-    # 실제 계산 입력 (지관무게는 기본값 = DB의 실측 or 추정값)
-    col_calc2_1, col_calc2_2, col_calc2_3 = st.columns(3)
-    with col_calc2_1:
-        core_weight_input = st.number_input(
-            "지관무게 (g, 필요하면 수정)",
+        core_weight = st.number_input(
+            "지관무게 (g)",
             min_value=0.0,
             step=0.1,
-            value=float(core_weight_db if core_weight_db > 0 else est_core_db),
-            key="label_calc_core_weight",
+            key="label_core_weight",
         )
-    with col_calc2_2:
-        sample_weight_input = st.number_input(
-            "샘플무게 (g, 필요시 수정)",
-            min_value=0.0,
-            step=0.01,
-            value=float(sample_weight_db),
-            key="label_calc_sample_weight",
-        )
-    with col_calc2_3:
-        sample_count_input = st.number_input(
-            "기준샘플 매수 (숫자만)",
+
+    with col_calc2:
+        base_count = st.number_input(
+            "기준샘플 매수 (장 수)",
             min_value=0.0,
             step=1.0,
-            value=float(sample_count_db),
-            key="label_calc_sample_count",
+            key="label_base_count",
         )
 
-    # 결과 계산
-    if film_weight > 0 and sample_weight_input > 0 and sample_count_input > 0:
-        net_film = film_weight - core_weight_input
-        if net_film <= 0:
-            st.error("필름무게가 지관무게보다 작거나 같습니다. 값을 다시 확인해주세요.")
-        else:
-            qty = net_film / sample_weight_input * sample_count_input
-            st.metric("계산 결과 (장수 기준)", f"{qty:,.1f} 매")
-            st.caption(f"정수로 내리면: **{int(qty):,} 매**")
-    else:
-        st.caption("필름무게, 샘플무게, 기준샘플 매수를 모두 입력하면 결과가 계산됩니다.")
+        sample_weight = st.number_input(
+            "샘플무게 (g)",
+            min_value=0.0,
+            step=0.01,
+            key="label_sample_weight",
+        )
 
-    # -----------------------------
-    # 2) 새 라벨 품목 추가하기 (계산기 바로 아래)
-    # -----------------------------
+    st.markdown("#### 계산 결과")
+
+    result = None
+    if sample_weight > 0:
+        try:
+            result = (film_weight - core_weight) / sample_weight * base_count
+        except Exception:
+            result = None
+
+    if result is not None:
+        st.success(f"계산된 수량: **{result:,.0f} 매**")
+    else:
+        st.info("샘플무게(g)가 0보다 커야 계산을 할 수 있습니다.")
+
+    # =======================================================
+    # 2️⃣ 새 라벨 품목 추가하기 (계산기 바로 아래)
+    # =======================================================
     with st.expander("➕ 새 라벨 품목 추가하기", expanded=False):
         st.caption("BOM 시트의 품번(C열)을 부분일치로 검색해서 품명을 확인한 뒤, 새 라벨 품목을 DB에 추가합니다.")
 
         # --- BOM 검색 (가능한 경우에만) ---
-        selected_part_from_bom = None
-        selected_name_from_bom = None
-
         if "df_bom_raw" in globals():
             df_bom_for_label = df_bom_raw.copy()
 
-            # ✅ 품번은 C열 기준
+            # ✅ BOM 품번: C열
             bom_part_col = pick_col(df_bom_for_label, "C", ["품번"])
             # BOM의 품명 컬럼 (D열 우선, 없으면 B열)
             bom_name_col = pick_col(df_bom_for_label, "D", ["품명"])
@@ -3294,58 +3304,61 @@ if menu == "🏷 라벨 수량 계산":
                 placeholder="예: 027A14, 038B12 등",
             )
 
+            df_bom_hit = pd.DataFrame()
             if new_bom_search and bom_part_col and bom_name_col:
-                mask_part = df_bom_for_label[bom_part_col].astype(str).str.contains(
+                mask_bom = df_bom_for_label[bom_part_col].astype(str).str.contains(
                     new_bom_search, na=False
                 )
 
-                # ✅ 품명의 끝부분에 '_라벨' 또는 '_엠블럼' 이 포함된 것만
-                name_series = df_bom_for_label[bom_name_col].astype(str)
-                mask_name = (
-                    name_series.str.contains(r"_.*라벨", na=False)
-                    | name_series.str.contains(r"_.*엠블럼", na=False)
-                )
+                df_bom_hit = df_bom_for_label.loc[mask_bom, [bom_part_col, bom_name_col]].copy()
 
-                mask_bom = mask_part & mask_name
+                # 🔹 품명의 끝부분에 "_" 이후에 '라벨' 또는 '엠블럼' 이 포함된 행만 남기기
+                def _label_like(name: str) -> bool:
+                    s = str(name)
+                    if "_" not in s:
+                        return False
+                    tail = s.split("_", 1)[1]
+                    return ("라벨" in tail) or ("엠블럼" in tail)
 
-                df_bom_hit = (
-                    df_bom_for_label.loc[mask_bom, [bom_part_col, bom_name_col]]
-                    .drop_duplicates()
-                    .head(50)
-                )
+                if not df_bom_hit.empty:
+                    df_bom_hit = df_bom_hit[df_bom_hit[bom_name_col].apply(_label_like)]
+
+                df_bom_hit = df_bom_hit.drop_duplicates().head(50)
+
                 if not df_bom_hit.empty:
                     df_bom_hit = df_bom_hit.rename(
                         columns={bom_part_col: "BOM_품번", bom_name_col: "BOM_품명"}
-                    ).reset_index(drop=True)
-
+                    )
                     st.dataframe(
                         df_bom_hit,
                         use_container_width=True,
                         height=200,
                     )
 
-                    # 🔽 검색 결과에서 하나 선택 → 아래 입력칸에 자동 반영
-                    options_bom = [
-                        f"{row['BOM_품번']} | {row['BOM_품명']}"
-                        for _, row in df_bom_hit.iterrows()
-                    ]
-                    selected_bom_opt = st.selectbox(
-                        "검색 결과에서 라벨/엠블럼 품목 선택",
-                        ["선택 안 함"] + options_bom,
+                    # 🔸 검색 결과 중 하나 선택 → 아래 입력 기본값으로 사용
+                    options = []
+                    opt_map = {}
+                    for idx, row in df_bom_hit.iterrows():
+                        p = str(row["BOM_품번"])
+                        n = str(row["BOM_품명"])
+                        label = f"{p} | {n}"
+                        options.append(label)
+                        opt_map[label] = idx
+
+                    selected_bom = st.selectbox(
+                        "라벨로 등록할 품목 선택",
+                        ["선택 안 함"] + options,
                         key="label_new_bom_select",
                     )
 
-                    if selected_bom_opt != "선택 안 함":
-                        idx_sel = options_bom.index(selected_bom_opt)
-                        row_sel = df_bom_hit.iloc[idx_sel]
-                        selected_part_from_bom = str(row_sel["BOM_품번"])
-                        selected_name_from_bom = str(row_sel["BOM_품명"])
-
-                        # 👉 텍스트 입력 기본값으로 넣어주기
-                        st.session_state["label_new_part"] = selected_part_from_bom
-                        st.session_state["label_new_name"] = selected_name_from_bom
+                    if selected_bom != "선택 안 함":
+                        sel_idx = opt_map[selected_bom]
+                        sel_row = df_bom_hit.loc[sel_idx]
+                        # 선택된 BOM 품번/품명을 아래 입력값 기본으로 주입
+                        st.session_state["label_new_part"] = str(sel_row["BOM_품번"])
+                        st.session_state["label_new_name"] = str(sel_row["BOM_품명"])
                 else:
-                    st.caption("검색 조건에 맞는 BOM 행이 없습니다. (라벨/엠블럼 품목만 표시합니다.)")
+                    st.caption("검색 조건에 맞는 BOM 행이 없습니다.")
             elif not bom_part_col or not bom_name_col:
                 st.warning("BOM 시트에서 품번(C열) 또는 품명(D열/B열) 컬럼을 찾지 못했습니다.")
         else:
@@ -3399,13 +3412,6 @@ if menu == "🏷 라벨 수량 계산":
                 key="label_new_h",
             )
 
-        # 🔍 외경/내경/높이로 측정값(추정값) 미리 보기
-        est_val_preview = 0.0
-        if new_od > 0 and new_id > 0 and new_h > 0:
-            est_val_preview = 3.14 * new_h * ((new_od ** 2 - new_id ** 2) / 4.0) * 0.78
-            est_val_preview = round(est_val_preview, 2)
-        st.metric("측정값 (추정 지관무게, g)", f"{est_val_preview:.2f}")
-
         col_sample1, col_sample2 = st.columns(2)
         with col_sample1:
             new_base_str = st.text_input(
@@ -3428,6 +3434,13 @@ if menu == "🏷 라벨 수량 계산":
             key="label_new_core_weight",
         )
 
+        # 🔹 외경/내경/높이 → 측정값(추정값) 미리 보여주기
+        est_preview = None
+        if new_od > 0 and new_id > 0 and new_h > 0:
+            est_preview = 3.14 * new_h * ((new_od ** 2 - new_id ** 2) / 4.0) * 0.78
+            est_preview = round(est_preview, 2)
+            st.caption(f"계산된 지관 추정값(측정값): 약 **{est_preview} g**")
+
         if st.button("✅ 입력 완료 (DB에 저장)", key="label_new_save_btn"):
             # 필수값 체크
             if not new_part or not new_name:
@@ -3447,6 +3460,7 @@ if menu == "🏷 라벨 수량 계산":
                 else:
                     err_val = 0.0
 
+                # 새 행 구성 (parse_label_db 구조에 맞춤)
                 new_row = {
                     "샘플번호": None,
                     "품번": new_part,
@@ -3467,111 +3481,63 @@ if menu == "🏷 라벨 수량 계산":
                     [df_label, pd.DataFrame([new_row])],
                     ignore_index=True,
                 )
-                df_label_new = normalize_label_df(df_label_new)
+
+                try:
+                    df_label_new = normalize_label_df(df_label_new)
+                except NameError:
+                    pass
 
                 st.session_state["label_db"] = df_label_new
                 save_label_db_to_s3(df_label_new)
 
-                st.success(f"새 라벨 품목이 DB에 추가되었습니다. (품번: {new_part})")
+                st.success(
+                    f"새 라벨 품목이 DB에 추가되었습니다. (품번: {new_part})"
+                )
 
-    # -----------------------------
-    # 3) 라벨 검색 + 삭제
-    # -----------------------------
-    st.markdown("### 🔍 라벨 검색 / 삭제")
+    # =======================================================
+    # 3️⃣ 라벨 DB 미리보기 / 삭제 / 저장
+    # =======================================================
+    with st.expander("📋 라벨 DB 미리보기 / 삭제 / 저장", expanded=False):
+        st.caption("라벨 DB를 확인하고, 필요 시 일부 행을 삭제하거나 전체를 엑셀로 다운로드할 수 있습니다.")
 
-    label_search = st.text_input(
-        "품번 또는 품명 검색 (부분일치)",
-        key="label_search",
-        placeholder="예: 품번 일부 또는 품명 일부",
-    )
+        df_label = st.session_state["label_db"].copy()
 
-    if label_search:
-        mask_search = (
-            df_label["품번"].astype(str).str.contains(label_search, na=False)
-            | df_label["품명"].astype(str).str.contains(label_search, na=False)
+        # 미리보기용 컬럼
+        cols_preview = [c for c in ["샘플번호", "품번", "품명", "구분", "지관무게", "기준샘플", "샘플무게"] if c in df_label.columns]
+
+        # 삭제 체크박스 컬럼 추가
+        df_label_view = df_label.copy()
+        df_label_view["삭제"] = False
+
+        df_edit = st.data_editor(
+            df_label_view[cols_preview + ["삭제"]],
+            use_container_width=True,
+            num_rows="dynamic",
+            key="label_db_editor",
         )
-        df_search = df_label.loc[mask_search].copy()
 
-        if df_search.empty:
-            st.info("검색 조건에 맞는 라벨 품목이 없습니다.")
-        else:
-            df_search = df_search.reset_index().rename(columns={"index": "_orig_index"})
-            df_search["삭제"] = False
+        # 삭제 버튼
+        if st.button("🗑️ 선택 행 삭제 후 저장", key="label_db_delete_btn"):
+            if "삭제" in df_edit.columns:
+                df_after_del = df_label.copy()
+                # 삭제 체크 된 행의 인덱스를 찾아서 원본에서 제거
+                del_mask = df_edit["삭제"] == True
+                if del_mask.any():
+                    drop_idx = df_edit.index[del_mask]
+                    df_after_del = df_after_del.drop(index=drop_idx)
+                    df_after_del = df_after_del.reset_index(drop=True)
 
-            display_cols = [
-                "삭제",
-                "품번",
-                "품명",
-                "구분",
-                "지관무게",
-                "추정값",
-                "기준샘플",
-                "샘플무게",
-            ]
-            display_cols = [c for c in display_cols if c in df_search.columns]
-
-            df_search_view = df_search[display_cols + ["_orig_index"]]
-
-            df_search_edit = st.data_editor(
-                df_search_view,
-                use_container_width=True,
-                num_rows="fixed",
-                hide_index=True,
-                column_config={
-                    "삭제": st.column_config.CheckboxColumn("삭제", default=False)
-                },
-                key="label_search_editor",
-            )
-
-            if st.button("🗑 선택한 라벨 삭제", key="label_delete_btn"):
-                to_delete_idx = df_search_edit.loc[
-                    df_search_edit["삭제"] == True, "_orig_index"
-                ].tolist()
-
-                if not to_delete_idx:
-                    st.warning("삭제할 라벨을 선택해주세요.")
+                    st.session_state["label_db"] = df_after_del
+                    save_label_db_to_s3(df_after_del)
+                    st.success(f"선택한 {del_mask.sum()}개 행을 삭제하고 저장했습니다.")
                 else:
-                    df_label_after = df_label.drop(index=to_delete_idx).reset_index(drop=True)
-                    df_label_after = normalize_label_df(df_label_after)
-                    st.session_state["label_db"] = df_label_after
-                    save_label_db_to_s3(df_label_after)
-                    st.success(f"선택한 라벨 {len(to_delete_idx)}개를 삭제했습니다.")
-                    st.experimental_rerun()
-
-    # -----------------------------
-    # 4) 라벨 DB 미리보기 / (선택적) 전체 편집
-    # -----------------------------
-    with st.expander("📋 라벨 DB 미리보기 / 저장", expanded=False):
-        cols_preview = [
-            c
-            for c in ["샘플번호", "품번", "품명", "구분", "지관무게", "추정값", "기준샘플", "샘플무게"]
-            if c in df_label.columns
-        ]
-        st.dataframe(df_label[cols_preview], use_container_width=True, height=300)
-
-        edit_mode = st.checkbox(
-            "✏️ 라벨 DB 전체 편집 모드 켜기 (느려질 수 있어요)",
-            key="label_db_edit_mode",
-            value=False,
-        )
-
-        if edit_mode:
-            df_edit = st.data_editor(
-                df_label,
-                use_container_width=True,
-                num_rows="dynamic",
-                key="label_db_editor",
-            )
-
-            if st.button("💾 라벨 DB 저장 (S3 반영)", key="label_db_save_btn"):
-                df_edit_norm = normalize_label_df(df_edit.copy())
-                st.session_state["label_db"] = df_edit_norm
-                save_label_db_to_s3(df_edit_norm)
-                st.success("라벨 DB를 S3에 저장했습니다.")
+                    st.info("삭제로 선택된 행이 없습니다.")
+            else:
+                st.error("삭제 컬럼을 찾을 수 없습니다.")
 
         # 엑셀로 내보내기
         excel_buf = io.BytesIO()
-        df_label.to_excel(excel_buf, index=False, sheet_name="라벨DB")
+        st.session_state["label_db"].to_excel(excel_buf, index=False, sheet_name="라벨DB")
         excel_buf.seek(0)
         st.download_button(
             "📥 현재 라벨 DB 엑셀로 다운로드",
