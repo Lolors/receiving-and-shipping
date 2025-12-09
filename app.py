@@ -3438,6 +3438,10 @@ if menu == "🏷 라벨 수량 계산":
     with st.expander("➕ 새 라벨 품목 추가하기", expanded=False):
         st.caption("BOM 시트의 품번(C열)을 부분일치로 검색해서 품명을 확인한 뒤, 새 라벨 품목을 DB에 추가합니다.")
 
+        # BOM 선택 결과 저장 변수
+        selected_bom_part = None
+        selected_bom_name = None
+
         # --- BOM 검색 (가능한 경우에만) ---
         if "df_bom_raw" in globals():
             df_bom_for_label = df_bom_raw.copy()
@@ -3463,10 +3467,35 @@ if menu == "🏷 라벨 수량 계산":
                     .drop_duplicates()
                     .head(50)
                 )
+
                 if not df_bom_hit.empty:
                     df_bom_hit = df_bom_hit.rename(
                         columns={bom_part_col: "BOM_품번", bom_name_col: "BOM_품명"}
                     )
+
+                    # 선택박스 옵션 구성
+                    options = []
+                    option_map = {}
+                    for _, row in df_bom_hit.iterrows():
+                        p = str(row["BOM_품번"])
+                        n = str(row["BOM_품명"])
+                        label = f"[{p}] {n}"
+                        options.append(label)
+                        option_map[label] = (p, n)
+
+                    selected_bom_label = st.selectbox(
+                        "검색 결과 중 하나 선택 (선택 시 아래 입력칸 자동 반영)",
+                        ["선택 안 함"] + options,
+                        key="label_new_bom_select",
+                    )
+
+                    if selected_bom_label != "선택 안 함":
+                        selected_bom_part, selected_bom_name = option_map[selected_bom_label]
+
+                        # 세션에 저장해서 new_part, new_name 기본값으로 반영
+                        st.session_state["label_new_part"] = selected_bom_part
+                        st.session_state["label_new_name"] = selected_bom_name
+
                     st.dataframe(
                         df_bom_hit,
                         use_container_width=True,
@@ -3489,6 +3518,7 @@ if menu == "🏷 라벨 수량 계산":
         else:
             gubun_choices = []
 
+        # BOM 선택 결과가 있으면 자동으로 기본값 반영됨
         new_part = st.text_input(
             "라벨 품번 (DB에 저장할 실제 품번)",
             key="label_new_part",
@@ -3527,6 +3557,14 @@ if menu == "🏷 라벨 수량 계산":
                 key="label_new_h",
             )
 
+        # 측정값 (= 추정값) 자동 계산
+        est_val_preview = 0.0
+        if new_od > 0 and new_id > 0 and new_h > 0:
+            est_val_preview = 3.14 * new_h * ((new_od ** 2 - new_id ** 2) / 4.0) * 0.78
+            est_val_preview = round(est_val_preview, 2)
+
+        st.metric("측정값 (g)", f"{est_val_preview:.2f}")
+
         col_sample1, col_sample2 = st.columns(2)
         with col_sample1:
             new_base_str = st.text_input(
@@ -3558,17 +3596,17 @@ if menu == "🏷 라벨 수량 계산":
             elif new_sample_weight <= 0:
                 st.error("샘플무게(g)는 0보다 큰 값이어야 합니다.")
             else:
-                # 추정값 계산 (요구사항 1)
+                # 추정값 계산
                 est_val = 3.14 * new_h * ((new_od ** 2 - new_id ** 2) / 4.0) * 0.78
                 est_val = round(est_val, 2)
 
-                # 오차: 실측 지관무게가 있으면 (추정값 - 실무게), 없으면 0
+                # 오차 계산
                 if new_core_weight > 0:
                     err_val = est_val - new_core_weight
                 else:
                     err_val = 0.0
 
-                # 새 행 구성 (기존 parse_label_db 구조에 맞춤)
+                # 새 행 구성
                 new_row = {
                     "샘플번호": None,
                     "품번": new_part,
