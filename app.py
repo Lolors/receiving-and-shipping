@@ -2380,24 +2380,6 @@ if menu == "↩️ 환입 관리":
                         df_full = recalc_return_expectation(df_return, aggs)
                         st.session_state["환입재고예상"] = df_full
 
-                        # ERP재고 매칭
-                        stock_part_col = pick_col(df_stock_raw, "D", ["품번"])
-                        stock_qty_col = (
-                            "실재고수량"
-                            if "실재고수량" in df_stock_raw.columns
-                            else pick_col(df_stock_raw, "N", ["실재고수량"])
-                        )
-
-                        if stock_part_col and stock_qty_col:
-                            stock_map = dict(
-                                zip(
-                                    df_stock_raw[stock_part_col].astype(str),
-                                    df_stock_raw[stock_qty_col].apply(safe_num),
-                                )
-                            )
-                            df_full["ERP재고"] = (
-                                df_full["품번"].astype(str).map(stock_map).fillna(0)
-                            )
                         else:
                             st.warning(
                                 "재고 시트에서 품번 또는 실재고수량 컬럼을 찾을 수 없습니다."
