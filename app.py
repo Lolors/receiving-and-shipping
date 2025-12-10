@@ -3308,10 +3308,10 @@ if menu == "🏷 라벨 수량 계산":
     # ---------- (2) 실제 계산 입력 영역 ----------
     st.markdown("#### 계산 입력")
 
-    col_calc1, col_calc2 = st.columns(2)
+    col_calc1, col_calc2, col_calc3, col_calc4 = st.columns(4)
 
+    # 필름무게
     with col_calc1:
-        st.session_state.setdefault("label_film_weight", 0.0)
         film_weight = st.number_input(
             "필름무게 (g)",
             min_value=0.0,
@@ -3319,13 +3319,7 @@ if menu == "🏷 라벨 수량 계산":
             key="label_film_weight",
         )
 
-        core_weight = st.number_input(
-            "지관무게 (g)",
-            min_value=0.0,
-            step=0.1,
-            key="label_core_weight",
-        )
-
+    # 기준샘플 매수
     with col_calc2:
         base_count = st.number_input(
             "기준샘플 매수 (장 수)",
@@ -3334,12 +3328,24 @@ if menu == "🏷 라벨 수량 계산":
             key="label_base_count",
         )
 
+    # 지관무게
+    with col_calc3:
+        core_weight = st.number_input(
+            "지관무게 (g)",
+            min_value=0.0,
+            step=0.1,
+            key="label_core_weight",
+        )
+
+    # 샘플무게
+    with col_calc4:
         sample_weight = st.number_input(
             "샘플무게 (g)",
             min_value=0.0,
             step=0.01,
             key="label_sample_weight",
         )
+
 
     st.markdown("#### 계산 결과")
 
