@@ -3754,19 +3754,40 @@ if menu == "🏷 라벨 수량 계산":
                 else:
                     st.error("삭제 컬럼을 찾을 수 없습니다.")
 
-        with col_excel:
-            excel_buf = io.BytesIO()
-            st.session_state["label_db"].to_excel(
-                excel_buf, index=False, sheet_name="라벨DB"
-            )
-            excel_buf.seek(0)
+        # 🔄 엑셀에서 다시 업로드해서 DB 덮어쓰기
+        st.markdown("---")
+        st.markdown("#### ⬆️ 엑셀에서 라벨 DB 다시 업로드")
 
-            st.download_button(
-                "📥 현재 라벨 DB 엑셀로 다운로드",
-                data=excel_buf,
-                file_name="라벨DB.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                key="label_db_download_btn",
+        uploaded_label_excel = st.file_uploader(
+            "수정한 라벨 DB 엑셀 업로드 (라벨DB.xlsx 그대로 사용 권장)",
+            type=["xlsx", "xlsm"],
+            key="label_db_reupload",
+        )
+
+        if uploaded_label_excel is not None:
+            if st.button(
+                "⬆️ 이 엑셀로 라벨 DB 덮어쓰기",
+                key="label_db_reupload_btn",
                 use_container_width=True,
-            )
+            ):
+                try:
+                    # 엑셀 첫 번째 시트 읽기
+                    df_new = pd.read_excel(uploaded_label_excel, sheet_name=0)
+
+                    # 가능하면 normalize 한 번 태워주기
+                    try:
+                        df_new = normalize_label_df(df_new)
+                    except NameError:
+                        pass
+
+                    # 세션 + S3 동시 반영
+                    st.session_state["label_db"] = df_new
+                    save_label_db_to_s3(df_new)
+
+                    st.success(
+                        f"엑셀에서 {len(df_new)}행을 읽어 라벨 DB를 덮어썼습니다."
+                    )
+                except Exception as e:
+                    st.error(f"엑셀 파일을 읽는 중 오류가 발생했습니다: {e}")
+
 
