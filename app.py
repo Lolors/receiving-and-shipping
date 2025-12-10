@@ -3484,7 +3484,7 @@ if menu == "🏷 라벨 수량 계산":
                     .head(50)
                 )
 
-                if not df_bom_hit.empty:
+                   if not df_bom_hit.empty:
                     df_bom_hit = df_bom_hit.rename(
                         columns={bom_part_col: "BOM_품번", bom_name_col: "BOM_품명"}
                     )
@@ -3500,7 +3500,12 @@ if menu == "🏷 라벨 수량 계산":
                     for idx, row in df_bom_hit.iterrows():
                         p = str(row["BOM_품번"])
                         n = str(row["BOM_품명"])
-                        label = f"{p} | {n}"
+
+                        # 🔹 긴 품명을 요약해서 표시 (브랜드 + 뒤쪽 라벨명)
+                        short_n = summarize_label_name_for_select(n)
+                        # 예: 2GNTMSK-001A17 | 바이피토 / 용기상단라벨(좌출)
+                        label = f"{p} | {short_n}"
+
                         options.append(label)
                         opt_map[label] = idx
 
