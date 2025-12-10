@@ -3500,12 +3500,35 @@ if menu == "🏷 라벨 수량 계산":
             )
 
         with colD:
-            new_base_sample = st.number_input(
+            # 선택지(표시용 문자열)
+            base_sample_display = [
+                "1매",
+                "2매(아이마크)",
+                "4매",
+                "20매",
+                "50매",
+                "100매",
+            ]
+
+            # 계산용 값 매핑
+            base_sample_map = {
+                "1매": 1,
+                "2매(아이마크)": 2,
+                "4매": 4,
+                "20매": 20,
+                "50매": 50,
+                "100매": 100,
+            }
+
+            selected_base_sample_display = st.selectbox(
                 "기준샘플",
-                min_value=0,
-                step=1,
+                base_sample_display,
                 key="label_new_base_sample",
             )
+
+            # 🔥 계산에 사용할 실제 숫자값
+            new_base_sample = base_sample_map[selected_base_sample_display]
+
 
         with colE:
             new_sample_weight = st.number_input(
