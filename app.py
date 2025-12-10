@@ -348,6 +348,50 @@ def parse_label_sample_count(text: str) -> float:
     except Exception:
         return 1.0
 
+def summarize_label_name_for_select(full_name: str) -> str:
+    """
+    긴 품명을 selectbox 표시용으로 짧게 요약한다. (스타일 B)
+
+    예)
+      '바이피토 레스트 포 로맨스 데일리 마스크(30매)_용기상단라벨(좌출)'
+        → '바이피토 / 용기상단라벨(좌출)'
+
+    - '_' 앞 부분의 첫 단어를 브랜드로 사용
+    - '_' 뒤 전체를 라벨명으로 사용
+    - 너무 길면 마지막에 '...' 붙여서 잘라줌
+    """
+    s = str(full_name).strip()
+    if "_" in s:
+        head, tail = s.split("_", 1)
+    else:
+        head, tail = s, ""
+
+    head = head.strip()
+    tail = tail.strip()
+
+    # 브랜드: 앞부분의 '첫 단어'만 사용 (너무 길어지는 것 방지)
+    if head:
+        brand = head.split()[0]  # 예: '바이피토', '닥터지' 등
+    else:
+        brand = ""
+
+    # 기본 표시 문자열 만들기
+    if brand and tail:
+        text = f"{brand} / {tail}"
+    elif brand:
+        text = brand
+    elif tail:
+        text = tail
+    else:
+        text = s
+
+    # 최종 길이 제한 (너무 길면 잘라주기)
+    MAX_LEN = 40
+    if len(text) > MAX_LEN:
+        text = text[:MAX_LEN] + "..."
+
+    return text
+
 # 라벨 DF를 한 번 정리해 주는 공통 함수
 def normalize_label_df(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -3252,23 +3296,48 @@ if menu == "🏷 라벨 수량 계산":
                 height=220,
             )
 
-            # 선택 옵션 만들기
-            options = []
-            opt_map = {}
-            for idx, row in df_hit.head(50).iterrows():
-                part = str(row.get("품번", ""))
-                name = str(row.get("품명", ""))
-                gubun = str(row.get("구분", ""))
-                label = f"{part} | {name} | {gubun}"
-                options.append(label)
-                opt_map[label] = idx
+        # 🔻 selectbox용 라벨명: 품명을 요약(B 스타일)해서 사용
+        options = []
+        opt_map = {}
+        for idx, row in df_hit.head(50).iterrows():
+            part = str(row.get("품번", ""))
+            name = str(row.get("품명", ""))
+            gubun = str(row.get("구분", ""))
 
-            selected_label = st.selectbox(
-                "계산에 사용할 라벨 선택",
-                ["선택 안 함"] + options,
-                key="label_calc_selectbox",
+            short_name = summarize_label_name_for_select(name)
+            # 예: '2GNTMSK-001A17 | 바이피토 / 용기상단라벨(좌출) | 용기상단라벨'
+            label = f"{part} | {short_name} | {gubun}"
+
+            options.append(label)
+            opt_map[label] = idx
+
+        selected_label = st.selectbox(
+            "계산에 사용할 라벨 선택",
+            ["선택 안 함"] + options,
+            key="label_calc_selectbox",
+        )
+
+        if selected_label != "선택 안 함":
+            sel_idx = opt_map[selected_label]
+            selected_row = df_hit.loc[sel_idx]
+
+            # 👉 아래는 그대로: 선택된 라벨의 전체 정보 사용
+            core_w = safe_num(selected_row.get("지관무게", 0))
+            est_w = safe_num(selected_row.get("추정값", 0))
+            sample_w = safe_num(selected_row.get("샘플무게", 0))
+            base_cnt = parse_label_sample_count(selected_row.get("기준샘플", ""))
+
+            if core_w <= 0 and est_w > 0:
+                core_w = est_w
+
+            st.session_state["label_core_weight"] = float(core_w)
+            st.session_state["label_sample_weight"] = float(sample_w)
+            st.session_state["label_base_count"] = float(base_cnt)
+
+            st.caption(
+                f"선택된 라벨의 지관무게 / 샘플무게 / 기준샘플(매수)을 계산기에 반영했습니다."
             )
-
+            
             if selected_label != "선택 안 함":
                 sel_idx = opt_map[selected_label]
                 selected_row = df_hit.loc[sel_idx]
