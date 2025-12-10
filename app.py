@@ -3294,30 +3294,43 @@ if menu == "🏷 라벨 수량 계산":
 
             # ✅ BOM 품번: C열
             bom_part_col = pick_col(df_bom_for_label, "C", ["품번"])
-            # BOM의 품명 컬럼 (D열 우선, 없으면 B열)
+            # ✅ BOM 품명: D열을 최우선 사용 (없으면 B열 fallback)
             bom_name_col = pick_col(df_bom_for_label, "D", ["품명"])
             if bom_name_col is None:
                 bom_name_col = pick_col(df_bom_for_label, "B", ["품명"])
 
             new_bom_search = st.text_input(
-                "BOM 자재 품번 검색 (부분일치, C열 기준)",
+                "BOM 자재 품번 검색 (부분일치, C열 기준 / 품명 D열도 함께 검색)",
                 key="label_new_bom_search",
-                placeholder="예: 027A14, 038B12 등",
+                placeholder="예: 027A14, 크림, 엠블럼 등",
             )
 
             df_bom_hit = pd.DataFrame()
             if new_bom_search and bom_part_col and bom_name_col:
                 search_val = str(new_bom_search).strip()
 
-                # ✅ BOM 쪽도 strip 해서 앞뒤 공백 제거 후 검색
-                mask_bom = df_bom_for_label[bom_part_col].astype(str).str.strip().str.contains(
+                # 🔎 품번(C열) 포함 검색 (공백 제거 후)
+                mask_part = df_bom_for_label[bom_part_col].astype(str).str.strip().str.contains(
                     search_val,
                     case=False,
                     na=False,
-                    regex=False,  # 그냥 '문자 포함'만 보게
+                    regex=False,  # 단순 포함
                 )
 
-                df_bom_hit = df_bom_for_label.loc[mask_bom, [bom_part_col, bom_name_col]].copy()
+                # 🔎 품명(D열) 포함 검색 (대소문자 무시)
+                mask_name = df_bom_for_label[bom_name_col].astype(str).str.contains(
+                    search_val,
+                    case=False,
+                    na=False,
+                    regex=False,
+                )
+
+                # 👉 품번(C) 또는 품명(D) 둘 중 하나라도 search_val 포함되면 선택
+                mask_bom = mask_part | mask_name
+
+                df_bom_hit = df_bom_for_label.loc[
+                    mask_bom, [bom_part_col, bom_name_col]
+                ].copy()
 
                 # 🔹 품명의 끝부분에 "_" 이후에 '라벨' 또는 '엠블럼' 이 포함된 행만 우선 사용하되,
                 #    그런 행이 하나도 없으면 필터를 적용하지 않고 전체를 그대로 사용
@@ -3328,23 +3341,21 @@ if menu == "🏷 라벨 수량 계산":
                         tail = s.split("_", 1)[1]
                         if ("라벨" in tail) or ("엠블럼" in tail):
                             return True
-                    # 2) 혹시 일반적으로라도 '라벨' 또는 '엠블럼'이 들어 있으면 인정
+                    # 2) 문자열 전체에 '라벨' 또는 '엠블럼' 포함되면 인정
                     if ("라벨" in s) or ("엠블럼" in s):
                         return True
                     return False
 
                 if not df_bom_hit.empty:
-                    # 후보 중에 라벨/엠블럼처럼 보이는 행만 우선 추출
                     df_label_like = df_bom_hit[df_bom_hit[bom_name_col].apply(_label_like)]
-
-                    # 그런 행이 하나라도 있으면 그것만 사용,
-                    # 없으면 원본 df_bom_hit 전체 사용
+                    # 라벨/엠블럼처럼 보이는 게 하나라도 있으면 그 행들만 사용
                     if not df_label_like.empty:
                         df_bom_hit = df_label_like
 
                 df_bom_hit = df_bom_hit.drop_duplicates().head(50)
 
                 if not df_bom_hit.empty:
+                    # 🔸 여기서 BOM_품명은 D열(bom_name_col) 기준
                     df_bom_hit = df_bom_hit.rename(
                         columns={bom_part_col: "BOM_품번", bom_name_col: "BOM_품명"}
                     )
