@@ -3672,9 +3672,9 @@ if menu == "🏷 라벨 수량 계산":
         if all(c in df_label.columns for c in ["외경", "내경", "높이"]):
             def _calc_core(row):
                 try:
-                    od = float(row["외경"])
-                    id_ = float(row["내경"])
-                    h = float(row["높이"])
+                    od = safe_num(row["외경"])
+                    id_ = safe_num(row["내경"])
+                    h = safe_num(row["높이"])
                     if od > 0 and h > 0 and od > id_ >= 0:
                         return (
                             math.pi
@@ -3687,13 +3687,17 @@ if menu == "🏷 라벨 수량 계산":
                 return None
 
             df_label["지관무게(추정값)"] = df_label.apply(_calc_core, axis=1)
+
+            # 🔧 숫자형으로 강제 변환 후 반올림 (여기 때문에 에러났던 거)
+            df_label["지관무게(추정값)"] = df_label["지관무게(추정값)"].apply(safe_num)
             df_label["지관무게(추정값)"] = df_label["지관무게(추정값)"].round(2)
 
-            # 세션에도 반영 (다른 탭에서 쓰기 위함)
+            # 세션에도 반영
             df_tmp = st.session_state["label_db"].copy()
             df_tmp["지관무게(추정값)"] = df_label["지관무게(추정값)"]
             st.session_state["label_db"] = df_tmp
             df_label = df_tmp
+
 
 
         # 미리보기용 컬럼
