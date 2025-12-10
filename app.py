@@ -3442,27 +3442,40 @@ if menu == "🏷 라벨 수량 계산":
         else:
             gubun_choices = []
 
-        new_part = st.text_input(
-            "라벨 품번 (DB에 저장할 실제 품번)",
-            key="label_new_part",
-            placeholder="예: 2KKMMSK-027A14-xxx",
-        )
-        new_name = st.text_input(
-            "품명",
-            key="label_new_name",
-        )
+        # --------------------------------------------------
+        # 1️⃣ 첫 번째 줄: 라벨 품번 / 품명 / 구분
+        # --------------------------------------------------
+        col1, col2, col3 = st.columns([1.5, 1.5, 1])
 
-        # 🔍 품명을 보고 자동 추론
+        with col1:
+            new_part = st.text_input(
+                "라벨 품번",
+                key="label_new_part",
+                placeholder="예: 2KKMMSK-027A14-xxx",
+            )
+
+        with col2:
+            new_name = st.text_input(
+                "품명",
+                key="label_new_name",
+            )
+
+        # 자동 구분 추론
         auto_gubun = infer_label_gubun_from_name(new_name)
 
-        gubun = st.text_input(
-            "구분",
-            key="label_gubun",
-            value=auto_gubun,   # 🔹 기본값을 자동 추론값으로
-        )
+        with col3:
+            gubun = st.text_input(
+                "구분",
+                key="label_gubun",
+                value=auto_gubun,
+            )
 
-        col_dim1, col_dim2, col_dim3 = st.columns(3)
-        with col_dim1:
+        # --------------------------------------------------
+        # 2️⃣ 두 번째 줄: 외경 / 내경 / 높이 / 기준샘플 / 샘플무게 / 실측 지관무게
+        # --------------------------------------------------
+        colA, colB, colC, colD, colE, colF = st.columns(6)
+
+        with colA:
             new_od = st.number_input(
                 "외경 (mm)",
                 min_value=0.0,
@@ -3470,48 +3483,31 @@ if menu == "🏷 라벨 수량 계산":
                 key="label_new_od",
             )
 
-        with col_dim2:
+        with colB:
             new_id = st.number_input(
                 "내경 (mm)",
                 min_value=0.0,
                 step=0.1,
                 key="label_new_id",
             )
-        with col_dim3:
-            new_h = st.number_input(
+
+        with colC:
+            new_height = st.number_input(
                 "높이 (mm)",
                 min_value=0.0,
                 step=0.1,
-                key="label_new_h",
+                key="label_new_height",
             )
 
-        col_sample1, col_sample2 = st.columns(2)
-        with col_sample1:
-            base_options = [
-                "1매",
-                "2매(아이마크)",
-                "4매",
-                "20매",
-                "50매",
-                "100매",
-                "(직접 입력)",
-            ]
-            base_choice = st.selectbox(
+        with colD:
+            new_base_sample = st.number_input(
                 "기준샘플",
-                options=base_options,
-                key="label_new_base_choice",
+                min_value=0,
+                step=1,
+                key="label_new_base_sample",
             )
 
-            if base_choice == "(직접 입력)":
-                new_base_str = st.text_input(
-                    "기준샘플 직접 입력 (예: '3매', '8매(특수)')",
-                    key="label_new_base_str_custom",
-                    placeholder="예: 3매",
-                )
-            else:
-                new_base_str = base_choice
-
-        with col_sample2:
+        with colE:
             new_sample_weight = st.number_input(
                 "샘플무게 (g)",
                 min_value=0.0,
@@ -3519,12 +3515,13 @@ if menu == "🏷 라벨 수량 계산":
                 key="label_new_sample_weight",
             )
 
-        new_core_weight = st.number_input(
-            "실측 지관무게 (g, 선택입력)",
-            min_value=0.0,
-            step=0.1,
-            key="label_new_core_weight",
-        )
+        with colF:
+            new_core_weight = st.number_input(
+                "실측 지관무게 (g)",
+                min_value=0.0,
+                step=0.01,
+                key="label_new_core_weight",
+            )
 
         # 🔹 외경/내경/높이 → 측정값(추정값) 미리 보여주기
         est_preview = None
