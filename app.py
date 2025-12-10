@@ -3320,7 +3320,7 @@ if menu == "🏷 라벨 수량 계산":
         )
 
     # 지관무게
-    with col_calc3:
+    with col_calc2:
         core_weight = st.number_input(
             "지관무게 (g)",
             min_value=0.0,
@@ -3330,7 +3330,7 @@ if menu == "🏷 라벨 수량 계산":
 
     
     # 기준샘플 매수
-    with col_calc2:
+    with col_calc3:
         base_count = st.number_input(
             "기준샘플 매수 (장 수)",
             min_value=0.0,
