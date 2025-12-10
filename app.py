@@ -3307,8 +3307,14 @@ if menu == "🏷 라벨 수량 계산":
 
             df_bom_hit = pd.DataFrame()
             if new_bom_search and bom_part_col and bom_name_col:
+                search_val = str(new_bom_search).strip()
+
+                # 🔹 내가 입력한 문자열이 '어디에든 포함'되어 있으면 다 검색 (대소문자 무시, 정규식 off)
                 mask_bom = df_bom_for_label[bom_part_col].astype(str).str.contains(
-                    new_bom_search, na=False
+                    search_val,
+                    case=False,
+                    na=False,
+                    regex=False,
                 )
 
                 df_bom_hit = df_bom_for_label.loc[mask_bom, [bom_part_col, bom_name_col]].copy()
@@ -3367,133 +3373,139 @@ if menu == "🏷 라벨 수량 계산":
 
         st.markdown("#### 실제로 DB에 저장할 라벨 정보 입력")
 
-        # 선택 가능한 구분 목록
-        if "LABEL_TYPES" in globals():
-            gubun_choices = LABEL_TYPES
-        elif "구분" in df_label.columns:
-            gubun_choices = sorted(df_label["구분"].dropna().unique().tolist())
-        else:
-            gubun_choices = []
-
-        new_part = st.text_input(
-            "라벨 품번 (DB에 저장할 실제 품번)",
-            key="label_new_part",
-            placeholder="예: 2KKMMSK-027A14-xxx",
-        )
-        new_name = st.text_input(
-            "품명",
-            key="label_new_name",
-        )
-        new_gubun = st.selectbox(
-            "구분",
-            options=gubun_choices if gubun_choices else ["(직접 입력)"],
-            key="label_new_gubun",
-        )
-
-        col_dim1, col_dim2, col_dim3 = st.columns(3)
-        with col_dim1:
-            new_od = st.number_input(
-                "외경 (mm)",
-                min_value=0.0,
-                step=0.1,
-                key="label_new_od",
-            )
-        with col_dim2:
-            new_id = st.number_input(
-                "내경 (mm)",
-                min_value=0.0,
-                step=0.1,
-                key="label_new_id",
-            )
-        with col_dim3:
-            new_h = st.number_input(
-                "높이 (mm)",
-                min_value=0.0,
-                step=0.1,
-                key="label_new_h",
-            )
-
-        col_sample1, col_sample2 = st.columns(2)
-        with col_sample1:
-            new_base_str = st.text_input(
-                "기준샘플 (예: '4매', '2매(아이마크)')",
-                key="label_new_base_str",
-                placeholder="예: 4매",
-            )
-        with col_sample2:
-            new_sample_weight = st.number_input(
-                "샘플무게 (g)",
-                min_value=0.0,
-                step=0.01,
-                key="label_new_sample_weight",
-            )
-
-        new_core_weight = st.number_input(
-            "실측 지관무게 (g, 선택입력)",
-            min_value=0.0,
-            step=0.1,
-            key="label_new_core_weight",
-        )
-
-        # 🔹 외경/내경/높이 → 측정값(추정값) 미리 보여주기
-        est_preview = None
-        if new_od > 0 and new_id > 0 and new_h > 0:
-            est_preview = 3.14 * new_h * ((new_od ** 2 - new_id ** 2) / 4.0) * 0.78
-            est_preview = round(est_preview, 2)
-            st.caption(f"계산된 지관 추정값(측정값): 약 **{est_preview} g**")
-
-        if st.button("✅ 입력 완료 (DB에 저장)", key="label_new_save_btn"):
-            # 필수값 체크
-            if not new_part or not new_name:
-                st.error("품번과 품명은 반드시 입력해야 합니다.")
-            elif new_od <= 0 or new_id <= 0 or new_h <= 0:
-                st.error("외경, 내경, 높이는 모두 0보다 큰 값이어야 합니다.")
-            elif new_sample_weight <= 0:
-                st.error("샘플무게(g)는 0보다 큰 값이어야 합니다.")
+        # ✅ 여기부터는 form으로 묶어서,
+        #    저장 버튼을 눌렀을 때만 검증 / 에러가 뜨도록 함
+        with st.form("label_new_form"):
+            # 선택 가능한 구분 목록
+            if "LABEL_TYPES" in globals():
+                gubun_choices = LABEL_TYPES
+            elif "구분" in df_label.columns:
+                gubun_choices = sorted(df_label["구분"].dropna().unique().tolist())
             else:
-                # 추정값 계산
-                est_val = 3.14 * new_h * ((new_od ** 2 - new_id ** 2) / 4.0) * 0.78
-                est_val = round(est_val, 2)
+                gubun_choices = []
 
-                # 오차: 실측 지관무게가 있으면 (추정값 - 실무게), 없으면 0
-                if new_core_weight > 0:
-                    err_val = est_val - new_core_weight
+            new_part = st.text_input(
+                "라벨 품번 (DB에 저장할 실제 품번)",
+                key="label_new_part",
+                placeholder="예: 2KKMMSK-027A14-xxx",
+            )
+            new_name = st.text_input(
+                "품명",
+                key="label_new_name",
+            )
+            new_gubun = st.selectbox(
+                "구분",
+                options=gubun_choices if gubun_choices else ["(직접 입력)"],
+                key="label_new_gubun",
+            )
+
+            col_dim1, col_dim2, col_dim3 = st.columns(3)
+            with col_dim1:
+                new_od = st.number_input(
+                    "외경 (mm)",
+                    min_value=0.0,
+                    step=0.1,
+                    key="label_new_od",
+                )
+            with col_dim2:
+                new_id = st.number_input(
+                    "내경 (mm)",
+                    min_value=0.0,
+                    step=0.1,
+                    key="label_new_id",
+                )
+            with col_dim3:
+                new_h = st.number_input(
+                    "높이 (mm)",
+                    min_value=0.0,
+                    step=0.1,
+                    key="label_new_h",
+                )
+
+            col_sample1, col_sample2 = st.columns(2)
+            with col_sample1:
+                new_base_str = st.text_input(
+                    "기준샘플 (예: '4매', '2매(아이마크)')",
+                    key="label_new_base_str",
+                    placeholder="예: 4매",
+                )
+            with col_sample2:
+                new_sample_weight = st.number_input(
+                    "샘플무게 (g)",
+                    min_value=0.0,
+                    step=0.01,
+                    key="label_new_sample_weight",
+                )
+
+            new_core_weight = st.number_input(
+                "실측 지관무게 (g, 선택입력)",
+                min_value=0.0,
+                step=0.1,
+                key="label_new_core_weight",
+            )
+
+            # 🔹 외경/내경/높이 → 측정값(추정값) 미리 보여주기
+            est_preview = None
+            if new_od > 0 and new_id > 0 and new_h > 0:
+                est_preview = 3.14 * new_h * ((new_od ** 2 - new_id ** 2) / 4.0) * 0.78
+                est_preview = round(est_preview, 2)
+                st.caption(f"계산된 지관 추정값(측정값): 약 **{est_preview} g**")
+
+            save_clicked = st.form_submit_button("✅ 입력 완료 (DB에 저장)")
+
+            if save_clicked:
+                # 필수값 체크
+                if not new_part or not new_name:
+                    st.error("품번과 품명은 반드시 입력해야 합니다.")
+                elif new_od <= 0 or new_id <= 0 or new_h <= 0:
+                    st.error("외경, 내경, 높이는 모두 0보다 큰 값이어야 합니다.")
+                elif new_sample_weight <= 0:
+                    st.error("샘플무게(g)는 0보다 큰 값이어야 합니다.")
                 else:
-                    err_val = 0.0
+                    # 추정값 계산
+                    est_val = 3.14 * new_h * ((new_od ** 2 - new_id ** 2) / 4.0) * 0.78
+                    est_val = round(est_val, 2)
 
-                # 새 행 구성 (parse_label_db 구조에 맞춤)
-                new_row = {
-                    "샘플번호": None,
-                    "품번": new_part,
-                    "품명": new_name,
-                    "구분": new_gubun if new_gubun != "(직접 입력)" else "",
-                    "지관무게": new_core_weight if new_core_weight > 0 else 0.0,
-                    "추정값": est_val,
-                    "오차": err_val,
-                    "외경": new_od,
-                    "내경": new_id,
-                    "높이": new_h,
-                    "1R무게": None,
-                    "기준샘플": new_base_str,
-                    "샘플무게": new_sample_weight,
-                }
+                    # 오차: 실측 지관무게가 있으면 (추정값 - 실무게), 없으면 0
+                    if new_core_weight > 0:
+                        err_val = est_val - new_core_weight
+                    else:
+                        err_val = 0.0
 
-                df_label_new = pd.concat(
-                    [df_label, pd.DataFrame([new_row])],
-                    ignore_index=True,
-                )
+                    # 새 행 구성 (parse_label_db 구조에 맞춤)
+                    new_row = {
+                        "샘플번호": None,
+                        "품번": new_part,
+                        "품명": new_name,
+                        "구분": new_gubun if new_gubun != "(직접 입력)" else "",
+                        "지관무게": new_core_weight if new_core_weight > 0 else 0.0,
+                        "추정값": est_val,
+                        "오차": err_val,
+                        "외경": new_od,
+                        "내경": new_id,
+                        "높이": new_h,
+                        "1R무게": None,
+                        "기준샘플": new_base_str,
+                        "샘플무게": new_sample_weight,
+                    }
 
-                try:
-                    df_label_new = normalize_label_df(df_label_new)
-                except NameError:
-                    pass
+                    df_label_new = pd.concat(
+                        [df_label, pd.DataFrame([new_row])],
+                        ignore_index=True,
+                    )
 
-                st.session_state["label_db"] = df_label_new
-                save_label_db_to_s3(df_label_new)
+                    try:
+                        df_label_new = normalize_label_df(df_label_new)
+                    except NameError:
+                        pass
 
-                st.success(
-                    f"새 라벨 품목이 DB에 추가되었습니다. (품번: {new_part})"
-                )
+                    st.session_state["label_db"] = df_label_new
+                    save_label_db_to_s3(df_label_new)
+
+                    st.success(
+                        f"새 라벨 품목이 DB에 추가되었습니다. (품번: {new_part})"
+                    )
+
 
     # =======================================================
     # 3️⃣ 라벨 DB 미리보기 / 삭제 / 저장
