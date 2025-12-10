@@ -3576,7 +3576,7 @@ if menu == "🏷 라벨 수량 계산":
         st.download_button(
             "📥 현재 라벨 DB 엑셀로 다운로드",
             data=excel_buf,
-            file_name="라벨_DB_현재버전.xlsx",
+            file_name="라벨DB.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             key="label_db_download_btn",
         )
