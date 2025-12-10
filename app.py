@@ -3377,7 +3377,7 @@ if menu == "🏷 라벨 수량 계산":
 
         # ✅ 여기부터는 form으로 묶어서,
         #    저장 버튼을 눌렀을 때만 검증 / 에러가 뜨도록 함
-        with st.form("label_new_form"):
+
             # 선택 가능한 구분 목록
             if "LABEL_TYPES" in globals():
                 gubun_choices = LABEL_TYPES
