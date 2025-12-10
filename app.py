@@ -3640,60 +3640,64 @@ if menu == "🏷 라벨 수량 계산":
 
         df_label = st.session_state["label_db"].copy()
 
-        # 🔁 🔥 백업 파일에서 외경/내경/높이 복구하기
-        st.markdown("#### 🔁 백업에서 외경/내경/높이 복구")
+        df_label = st.session_state["label_db"].copy()
 
+        # 🔁 백업 파일로 라벨 DB 전체 복구하기
         backup_file = st.file_uploader(
-            "외경/내경/높이 정보가 들어있는 예전 라벨DB 파일 업로드 (엑셀/CSV)",
-            type=["xlsx", "xls", "csv"],
-            key="label_backup_upload",
+            "⬆️ 백업 라벨DB 파일 업로드 (라벨 및 스티커 지관무게+수량 계산기_*.xlsx)",
+            type=["xlsx", "xls"],
+            key="label_db_backup_upload",
         )
 
         if backup_file is not None:
             try:
-                # 백업 파일 읽기
-                if backup_file.name.lower().endswith(".csv"):
-                    df_old = pd.read_csv(backup_file)
-                else:
-                    df_old = pd.read_excel(backup_file)
+                # 🔹 백업 파일에서 '라벨 및 스티커' 시트만 사용
+                df_old = pd.read_excel(backup_file, sheet_name="라벨 및 스티커")
 
-                # 필요한 컬럼만 남기기 (품번 + 외경/내경/높이가 있다고 가정)
-                needed_cols = ["품번", "외경", "내경", "높이"]
-                missing = [c for c in needed_cols if c not in df_old.columns]
+                # 🔹 우리가 쓸 컬럼 매핑 정의
+                col_map = {
+                    "No.": "샘플번호",
+                    "품번": "품번",
+                    "품명": "품명",
+                    "구분": "구분",
+                    "실무게": "지관무게",
+                    "추정값": "추정값",
+                    "오차": "오차",
+                    "외경": "외경",
+                    "내경": "내경",
+                    "높이": "높이",
+                    "1R무게": "1R무게",
+                    "기준 샘플": "기준샘플",
+                    "샘플무게": "샘플무게",
+                }
+
+                missing = [c for c in col_map.keys() if c not in df_old.columns]
                 if missing:
                     st.error(f"백업 파일에 다음 컬럼이 없습니다: {', '.join(missing)}")
                 else:
-                    df_old_small = df_old[needed_cols].copy()
+                    # 🔹 필요한 컬럼만 뽑아서 이름 통일
+                    df_new = df_old[list(col_map.keys())].copy()
+                    df_new = df_new.rename(columns=col_map)
 
-                    # 현재 DB에 외경/내경/높이 컬럼 없으면 생성
-                    for c in ["외경", "내경", "높이"]:
-                        if c not in df_label.columns:
-                            df_label[c] = None
+                    # 🔹 품번/품명이 모두 비어있는 행은 버림
+                    df_new = df_new[~(df_new["품번"].isna() & df_new["품명"].isna())]
+                    df_new = df_new.reset_index(drop=True)
 
-                    # 품번 기준으로 머지
-                    df_merged = df_label.merge(
-                        df_old_small,
-                        on="품번",
-                        how="left",
-                        suffixes=("", "_old"),
-                    )
+                    # 🔹 필요하면 정규화 함수 태우기
+                    try:
+                        df_new = normalize_label_df(df_new)
+                    except NameError:
+                        pass
 
-                    # 기존 값이 비어 있으면 old 값으로 채우기
-                    for c in ["외경", "내경", "높이"]:
-                        old_col = f"{c}_old"
-                        if old_col in df_merged.columns:
-                            df_merged[c] = df_merged[c].fillna(df_merged[old_col])
-                            df_merged = df_merged.drop(columns=[old_col])
+                    st.session_state["label_db"] = df_new
+                    save_label_db_to_s3(df_new)
 
-                    # 세션/저장 반영
-                    st.session_state["label_db"] = df_merged
-                    save_label_db_to_s3(df_merged)
-
-                    df_label = df_merged  # 아래 미리보기도 복구된 값 사용
-                    st.success("백업 파일을 기준으로 외경/내경/높이 정보를 복구했습니다.")
+                    df_label = df_new  # 아래 미리보기도 복구된 데이터 사용
+                    st.success("백업 파일을 기준으로 라벨 DB를 전체 복구했습니다.")
 
             except Exception as e:
                 st.error(f"백업 파일 처리 중 오류가 발생했습니다: {e}")
+
 
         
 
