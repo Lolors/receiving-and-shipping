@@ -3472,7 +3472,8 @@ if menu == "🏷 라벨 수량 계산":
             est_preview = round(est_preview, 2)
             st.caption(f"계산된 지관 추정값(측정값): 약 **{est_preview} g**")
 
-        save_clicked = st.form_submit_button("✅ 입력 완료 (DB에 저장)")
+        # ✅ 일반 버튼으로 사용 (form_submit_button 아님!)
+        save_clicked = st.button("✅ 입력 완료 (DB에 저장)", key="label_new_save_btn")
 
         if save_clicked:
             # 필수값 체크
