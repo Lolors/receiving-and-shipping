@@ -3465,7 +3465,6 @@ if menu == "🏷 라벨 수량 계산":
             key="label_new_core_weight",
         )
 
-
             # 🔹 외경/내경/높이 → 측정값(추정값) 미리 보여주기
             est_preview = None
             if new_od > 0 and new_id > 0 and new_h > 0:
