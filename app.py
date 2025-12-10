@@ -3292,13 +3292,16 @@ if menu == "🏷 라벨 수량 계산":
         if "df_bom_raw" in globals():
             df_bom_for_label = df_bom_raw.copy()
 
-            # ✅ 품번은 C열 고정
-            bom_part_col = pick_col(df_bom_for_label, "C", ["품번"])
-            # ✅ 품명은 D열(라벨/엠블럼/실링 들어 있는 열) 우선 사용
-            bom_name_col = pick_col(df_bom_for_label, "D", ["품명"])
-            # 정말 D열이 없을 때만 B열을 임시로 사용
-            if bom_name_col is None:
-                bom_name_col = pick_col(df_bom_for_label, "B", ["품명"])
+            # ✅ C열, D열을 "위치" 기준으로 강제 선택 (헤더명이 뭐든 상관 없음)
+            cols = list(df_bom_for_label.columns)
+            try:
+                bom_part_col = cols[excel_col_to_index("C")]  # 품번
+            except Exception:
+                bom_part_col = None
+            try:
+                bom_name_col = cols[excel_col_to_index("D")]  # 품명(D열, 예: 품명.1)
+            except Exception:
+                bom_name_col = None
 
             new_bom_search = st.text_input(
                 "BOM 자재 품번 검색 (부분일치, C열 기준 / 품명 D열도 함께 검색)",
@@ -3311,7 +3314,7 @@ if menu == "🏷 라벨 수량 계산":
             if new_bom_search and bom_part_col and bom_name_col:
                 keyword = new_bom_search.strip()
 
-                # 🔎 품번(C열) + 품명(D열) 둘 다 "문자열 포함" 검색 (정규식 아님)
+                # 🔍 품번(C열) + 품명(D열) 둘 다 "문자열 포함" 검색 (정규식 아님)
                 mask_search = (
                     df_bom_for_label[bom_part_col].astype(str).str.contains(
                         keyword, case=False, na=False, regex=False
@@ -3321,7 +3324,7 @@ if menu == "🏷 라벨 수량 계산":
                     )
                 )
 
-                # 🔹 품명 D열에서만 라벨/엠블럼/실링 키워드 필터
+                # 🔹 품명 D열에서만 '라벨' / '엠블럼' / '실링' 포함된 것만
                 mask_label = df_bom_for_label[bom_name_col].astype(str).str.contains(
                     r"(라벨|엠블럼|실링)", na=False
                 )
@@ -3361,13 +3364,12 @@ if menu == "🏷 라벨 수량 계산":
                     if selected_bom != "선택 안 함":
                         sel_idx = opt_map[selected_bom]
                         sel_row = df_bom_hit.loc[sel_idx]
-                        # 선택된 BOM 품번/품명을 아래 입력값 기본으로 주입
                         st.session_state["label_new_part"] = str(sel_row["BOM_품번"])
                         st.session_state["label_new_name"] = str(sel_row["BOM_품명"])
                 else:
                     st.caption("검색 조건 + 라벨/엠블럼/실링 조건에 맞는 BOM 행이 없습니다.")
             elif not bom_part_col or not bom_name_col:
-                st.warning("BOM 시트에서 품번(C열) 또는 품명(D열/B열) 컬럼을 찾지 못했습니다.")
+                st.warning("BOM 시트에서 C열 또는 D열 컬럼을 찾지 못했습니다.")
         else:
             st.info("BOM 시트 검색은 메인 부자재 DB 업로드 후 사용 가능합니다.")
 
