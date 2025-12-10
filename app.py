@@ -3465,67 +3465,67 @@ if menu == "🏷 라벨 수량 계산":
             key="label_new_core_weight",
         )
 
-            # 🔹 외경/내경/높이 → 측정값(추정값) 미리 보여주기
-            est_preview = None
-            if new_od > 0 and new_id > 0 and new_h > 0:
-                est_preview = 3.14 * new_h * ((new_od ** 2 - new_id ** 2) / 4.0) * 0.78
-                est_preview = round(est_preview, 2)
-                st.caption(f"계산된 지관 추정값(측정값): 약 **{est_preview} g**")
+        # 🔹 외경/내경/높이 → 측정값(추정값) 미리 보여주기
+        est_preview = None
+        if new_od > 0 and new_id > 0 and new_h > 0:
+            est_preview = 3.14 * new_h * ((new_od ** 2 - new_id ** 2) / 4.0) * 0.78
+            est_preview = round(est_preview, 2)
+            st.caption(f"계산된 지관 추정값(측정값): 약 **{est_preview} g**")
 
-            save_clicked = st.form_submit_button("✅ 입력 완료 (DB에 저장)")
+        save_clicked = st.form_submit_button("✅ 입력 완료 (DB에 저장)")
 
-            if save_clicked:
-                # 필수값 체크
-                if not new_part or not new_name:
-                    st.error("품번과 품명은 반드시 입력해야 합니다.")
-                elif new_od <= 0 or new_id <= 0 or new_h <= 0:
-                    st.error("외경, 내경, 높이는 모두 0보다 큰 값이어야 합니다.")
-                elif new_sample_weight <= 0:
-                    st.error("샘플무게(g)는 0보다 큰 값이어야 합니다.")
+        if save_clicked:
+            # 필수값 체크
+            if not new_part or not new_name:
+                st.error("품번과 품명은 반드시 입력해야 합니다.")
+            elif new_od <= 0 or new_id <= 0 or new_h <= 0:
+                st.error("외경, 내경, 높이는 모두 0보다 큰 값이어야 합니다.")
+            elif new_sample_weight <= 0:
+                st.error("샘플무게(g)는 0보다 큰 값이어야 합니다.")
+            else:
+                # 추정값 계산
+                est_val = 3.14 * new_h * ((new_od ** 2 - new_id ** 2) / 4.0) * 0.78
+                est_val = round(est_val, 2)
+
+                # 오차: 실측 지관무게가 있으면 (추정값 - 실무게), 없으면 0
+                if new_core_weight > 0:
+                    err_val = est_val - new_core_weight
                 else:
-                    # 추정값 계산
-                    est_val = 3.14 * new_h * ((new_od ** 2 - new_id ** 2) / 4.0) * 0.78
-                    est_val = round(est_val, 2)
+                    err_val = 0.0
 
-                    # 오차: 실측 지관무게가 있으면 (추정값 - 실무게), 없으면 0
-                    if new_core_weight > 0:
-                        err_val = est_val - new_core_weight
-                    else:
-                        err_val = 0.0
+                # 새 행 구성 (parse_label_db 구조에 맞춤)
+                new_row = {
+                    "샘플번호": None,
+                    "품번": new_part,
+                    "품명": new_name,
+                    "구분": new_gubun if new_gubun != "(직접 입력)" else "",
+                    "지관무게": new_core_weight if new_core_weight > 0 else 0.0,
+                    "추정값": est_val,
+                    "오차": err_val,
+                    "외경": new_od,
+                    "내경": new_id,
+                    "높이": new_h,
+                    "1R무게": None,
+                    "기준샘플": new_base_str,
+                    "샘플무게": new_sample_weight,
+                }
 
-                    # 새 행 구성 (parse_label_db 구조에 맞춤)
-                    new_row = {
-                        "샘플번호": None,
-                        "품번": new_part,
-                        "품명": new_name,
-                        "구분": new_gubun if new_gubun != "(직접 입력)" else "",
-                        "지관무게": new_core_weight if new_core_weight > 0 else 0.0,
-                        "추정값": est_val,
-                        "오차": err_val,
-                        "외경": new_od,
-                        "내경": new_id,
-                        "높이": new_h,
-                        "1R무게": None,
-                        "기준샘플": new_base_str,
-                        "샘플무게": new_sample_weight,
-                    }
+                df_label_new = pd.concat(
+                    [df_label, pd.DataFrame([new_row])],
+                    ignore_index=True,
+                )
 
-                    df_label_new = pd.concat(
-                        [df_label, pd.DataFrame([new_row])],
-                        ignore_index=True,
-                    )
+                try:
+                    df_label_new = normalize_label_df(df_label_new)
+                except NameError:
+                    pass
 
-                    try:
-                        df_label_new = normalize_label_df(df_label_new)
-                    except NameError:
-                        pass
+                st.session_state["label_db"] = df_label_new
+                save_label_db_to_s3(df_label_new)
 
-                    st.session_state["label_db"] = df_label_new
-                    save_label_db_to_s3(df_label_new)
-
-                    st.success(
-                        f"새 라벨 품목이 DB에 추가되었습니다. (품번: {new_part})"
-                    )
+                st.success(
+                    f"새 라벨 품목이 DB에 추가되었습니다. (품번: {new_part})"
+                )
 
 
     # =======================================================
