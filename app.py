@@ -3754,6 +3754,23 @@ if menu == "🏷 라벨 수량 계산":
                 else:
                     st.error("삭제 컬럼을 찾을 수 없습니다.")
 
+        with col_excel:
+            excel_buf = io.BytesIO()
+            st.session_state["label_db"].to_excel(
+                excel_buf, index=False, sheet_name="라벨DB"
+            )
+            excel_buf.seek(0)
+
+            st.download_button(
+                "📥 현재 라벨 DB 엑셀로 다운로드",
+                data=excel_buf,
+                file_name="라벨DB.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="label_db_download_btn",
+                use_container_width=True,
+            )
+
+        
         # 🔄 엑셀에서 다시 업로드해서 DB 덮어쓰기
         st.markdown("---")
         st.markdown("#### ⬆️ 엑셀에서 라벨 DB 다시 업로드")
