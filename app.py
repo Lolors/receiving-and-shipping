@@ -3463,7 +3463,7 @@ if menu == "🏷 라벨 수량 계산":
             if new_bom_search and bom_part_col and bom_name_col:
                 keyword = new_bom_search.strip()
 
-                # 🔍 품번(C열) + 품명(D열) 둘 다 "문자열 포함" 검색 (정규식 아님)
+                # 🔍 품번(C열) + 품명(D열) 둘 다 "문자열 포함" 검색
                 mask_search = (
                     df_bom_for_label[bom_part_col].astype(str).str.contains(
                         keyword, case=False, na=False, regex=False
@@ -3473,18 +3473,22 @@ if menu == "🏷 라벨 수량 계산":
                     )
                 )
 
-                # 🔹 품명 D열에서만 '라벨' / '엠블럼' / '실링' 포함된 것만
+                # 🔹 품명 D열이 라벨/엠블럼/실링 포함
                 mask_label = df_bom_for_label[bom_name_col].astype(str).str.contains(
                     r"(라벨|엠블럼|실링)", na=False
                 )
 
                 df_bom_hit = (
-                    df_bom_for_label.loc[mask_search & mask_label, [bom_part_col, bom_name_col]]
+                    df_bom_for_label.loc[
+                        mask_search & mask_label,
+                        [bom_part_col, bom_name_col]
+                    ]
                     .drop_duplicates()
                     .head(50)
                 )
 
-                   if not df_bom_hit.empty:
+                # 🔥 여기 들여쓰기 수정됨!
+                if not df_bom_hit.empty:
                     df_bom_hit = df_bom_hit.rename(
                         columns={bom_part_col: "BOM_품번", bom_name_col: "BOM_품명"}
                     )
@@ -3494,16 +3498,15 @@ if menu == "🏷 라벨 수량 계산":
                         height=200,
                     )
 
-                    # 🔸 검색 결과 중 하나 선택 → 아래 입력 기본값으로 사용
+                    # 🔸 검색 결과 중 하나 선택 → 아래 입력 자동 반영
                     options = []
                     opt_map = {}
                     for idx, row in df_bom_hit.iterrows():
                         p = str(row["BOM_품번"])
                         n = str(row["BOM_품명"])
 
-                        # 🔹 긴 품명을 요약해서 표시 (브랜드 + 뒤쪽 라벨명)
+                        # 🔹 품명 요약 적용
                         short_n = summarize_label_name_for_select(n)
-                        # 예: 2GNTMSK-001A17 | 바이피토 / 용기상단라벨(좌출)
                         label = f"{p} | {short_n}"
 
                         options.append(label)
@@ -3522,20 +3525,11 @@ if menu == "🏷 라벨 수량 계산":
                         st.session_state["label_new_name"] = str(sel_row["BOM_품명"])
                 else:
                     st.caption("검색 조건 + 라벨/엠블럼/실링 조건에 맞는 BOM 행이 없습니다.")
+
             elif not bom_part_col or not bom_name_col:
                 st.warning("BOM 시트에서 C열 또는 D열 컬럼을 찾지 못했습니다.")
         else:
             st.info("BOM 시트 검색은 메인 부자재 DB 업로드 후 사용 가능합니다.")
-
-        st.markdown("#### 라벨 정보 입력")
-
-        # 선택 가능한 구분 목록 (필요하면 나중에 selectbox로 쓸 수 있게 남겨둠)
-        if "LABEL_TYPES" in globals():
-            gubun_choices = LABEL_TYPES
-        elif "구분" in df_label.columns:
-            gubun_choices = sorted(df_label["구분"].dropna().unique().tolist())
-        else:
-            gubun_choices = []
 
         # --------------------------------------------------
         # 1️⃣ 첫 번째 줄: 라벨 품번 / 품명 / 구분(자동 인식)
