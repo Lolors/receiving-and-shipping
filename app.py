@@ -3453,10 +3453,13 @@ if menu == "🏷 라벨 수량 계산":
             "품명",
             key="label_new_name",
         )
-        new_gubun = st.selectbox(
+        # 품명을 보고 자동 추론
+        auto_gubun = infer_label_gubun_from_name(name)
+
+        gubun = st.text_input(
             "구분",
-            options=gubun_choices if gubun_choices else ["(직접 입력)"],
-            key="label_new_gubun",
+            key="label_gubun",
+            value=auto_gubun,   # 🔹 기본값을 자동 추론값으로
         )
 
         col_dim1, col_dim2, col_dim3 = st.columns(3)
