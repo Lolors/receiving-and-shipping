@@ -3531,6 +3531,16 @@ if menu == "🏷 라벨 수량 계산":
         else:
             st.info("BOM 시트 검색은 메인 부자재 DB 업로드 후 사용 가능합니다.")
 
+        st.markdown("#### 라벨 정보 입력")
+
+        # 선택 가능한 구분 목록 (필요하면 나중에 selectbox로 쓸 수 있게 남겨둠)
+        if "LABEL_TYPES" in globals():
+            gubun_choices = LABEL_TYPES
+        elif "구분" in df_label.columns:
+            gubun_choices = sorted(df_label["구분"].dropna().unique().tolist())
+        else:
+            gubun_choices = []
+
         # --------------------------------------------------
         # 1️⃣ 첫 번째 줄: 라벨 품번 / 품명 / 구분(자동 인식)
         # --------------------------------------------------
