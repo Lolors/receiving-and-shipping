@@ -3532,14 +3532,18 @@ if menu == "🏷 라벨 수량 계산":
     # 3️⃣ 라벨 DB 미리보기 / 삭제 / 저장
     # =======================================================
     with st.expander("📋 라벨 DB 미리보기 / 삭제 / 저장", expanded=False):
-        st.caption("라벨 DB를 확인하고, 필요 시 일부 행을 삭제하거나 전체를 엑셀로 다운로드할 수 있습니다.")
+        st.caption("라벨 DB를 확인하고, 필요 시 일부 행을 수정/삭제하거나 전체를 엑셀로 다운로드할 수 있습니다.")
 
         df_label = st.session_state["label_db"].copy()
 
         # 미리보기용 컬럼
-        cols_preview = [c for c in ["샘플번호", "품번", "품명", "구분", "지관무게", "기준샘플", "샘플무게"] if c in df_label.columns]
+        cols_preview = [
+            c
+            for c in ["샘플번호", "품번", "품명", "구분", "지관무게", "기준샘플", "샘플무게"]
+            if c in df_label.columns
+        ]
 
-        # 삭제 체크박스 컬럼 추가
+        # 삭제 체크박스 컬럼 추가 (뷰용)
         df_label_view = df_label.copy()
         df_label_view["삭제"] = False
 
@@ -3550,15 +3554,23 @@ if menu == "🏷 라벨 수량 계산":
             key="label_db_editor",
         )
 
-        # 삭제 버튼
+        # 💾 여러 건 수정 후 한 번에 저장
+        if st.button("💾 변경사항 저장", key="label_db_save_btn"):
+            # 삭제 컬럼 제거 후 저장
+            df_to_save = df_edit.drop(columns=["삭제"], errors="ignore").copy()
+            df_to_save = df_to_save.reset_index(drop=True)
+
+            st.session_state["label_db"] = df_to_save
+            save_label_db_to_s3(df_to_save)
+            st.success("라벨 DB 변경사항을 모두 저장했어요.")
+
+        # 🗑️ 선택 행만 삭제 후 저장
         if st.button("🗑️ 선택 행 삭제 후 저장", key="label_db_delete_btn"):
             if "삭제" in df_edit.columns:
-                df_after_del = df_label.copy()
-                # 삭제 체크 된 행의 인덱스를 찾아서 원본에서 제거
                 del_mask = df_edit["삭제"] == True
                 if del_mask.any():
-                    drop_idx = df_edit.index[del_mask]
-                    df_after_del = df_after_del.drop(index=drop_idx)
+                    # 삭제 체크 안 된 행만 남기고, 삭제 컬럼 제거
+                    df_after_del = df_edit[~del_mask].drop(columns=["삭제"])
                     df_after_del = df_after_del.reset_index(drop=True)
 
                     st.session_state["label_db"] = df_after_del
@@ -3569,9 +3581,11 @@ if menu == "🏷 라벨 수량 계산":
             else:
                 st.error("삭제 컬럼을 찾을 수 없습니다.")
 
-        # 엑셀로 내보내기
+        # 엑셀로 내보내기 (현재 세션 DB 기준)
         excel_buf = io.BytesIO()
-        st.session_state["label_db"].to_excel(excel_buf, index=False, sheet_name="라벨DB")
+        st.session_state["label_db"].to_excel(
+            excel_buf, index=False, sheet_name="라벨DB"
+        )
         excel_buf.seek(0)
         st.download_button(
             "📥 현재 라벨 DB 엑셀로 다운로드",
