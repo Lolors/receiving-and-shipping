@@ -3309,26 +3309,38 @@ if menu == "🏷 라벨 수량 계산":
             if new_bom_search and bom_part_col and bom_name_col:
                 search_val = str(new_bom_search).strip()
 
-                # 🔹 내가 입력한 문자열이 '어디에든 포함'되어 있으면 다 검색 (대소문자 무시, 정규식 off)
-                mask_bom = df_bom_for_label[bom_part_col].astype(str).str.contains(
+                # ✅ BOM 쪽도 strip 해서 앞뒤 공백 제거 후 검색
+                mask_bom = df_bom_for_label[bom_part_col].astype(str).str.strip().str.contains(
                     search_val,
                     case=False,
                     na=False,
-                    regex=False,
+                    regex=False,  # 그냥 '문자 포함'만 보게
                 )
 
                 df_bom_hit = df_bom_for_label.loc[mask_bom, [bom_part_col, bom_name_col]].copy()
 
-                # 🔹 품명의 끝부분에 "_" 이후에 '라벨' 또는 '엠블럼' 이 포함된 행만 남기기
+                # 🔹 품명의 끝부분에 "_" 이후에 '라벨' 또는 '엠블럼' 이 포함된 행만 우선 사용하되,
+                #    그런 행이 하나도 없으면 필터를 적용하지 않고 전체를 그대로 사용
                 def _label_like(name: str) -> bool:
                     s = str(name)
-                    if "_" not in s:
-                        return False
-                    tail = s.split("_", 1)[1]
-                    return ("라벨" in tail) or ("엠블럼" in tail)
+                    # 1) "_" 뒤에 라벨/엠블럼 있는 패턴
+                    if "_" in s:
+                        tail = s.split("_", 1)[1]
+                        if ("라벨" in tail) or ("엠블럼" in tail):
+                            return True
+                    # 2) 혹시 일반적으로라도 '라벨' 또는 '엠블럼'이 들어 있으면 인정
+                    if ("라벨" in s) or ("엠블럼" in s):
+                        return True
+                    return False
 
                 if not df_bom_hit.empty:
-                    df_bom_hit = df_bom_hit[df_bom_hit[bom_name_col].apply(_label_like)]
+                    # 후보 중에 라벨/엠블럼처럼 보이는 행만 우선 추출
+                    df_label_like = df_bom_hit[df_bom_hit[bom_name_col].apply(_label_like)]
+
+                    # 그런 행이 하나라도 있으면 그것만 사용,
+                    # 없으면 원본 df_bom_hit 전체 사용
+                    if not df_label_like.empty:
+                        df_bom_hit = df_label_like
 
                 df_bom_hit = df_bom_hit.drop_duplicates().head(50)
 
@@ -3346,7 +3358,7 @@ if menu == "🏷 라벨 수량 계산":
                     options = []
                     opt_map = {}
                     for idx, row in df_bom_hit.iterrows():
-                        p = str(row["BOM_품번"])
+                        p = str(row["BOM_품번"]).strip()
                         n = str(row["BOM_품명"])
                         label = f"{p} | {n}"
                         options.append(label)
@@ -3362,7 +3374,7 @@ if menu == "🏷 라벨 수량 계산":
                         sel_idx = opt_map[selected_bom]
                         sel_row = df_bom_hit.loc[sel_idx]
                         # 선택된 BOM 품번/품명을 아래 입력값 기본으로 주입
-                        st.session_state["label_new_part"] = str(sel_row["BOM_품번"])
+                        st.session_state["label_new_part"] = str(sel_row["BOM_품번"]).strip()
                         st.session_state["label_new_name"] = str(sel_row["BOM_품명"])
                 else:
                     st.caption("검색 조건에 맞는 BOM 행이 없습니다.")
