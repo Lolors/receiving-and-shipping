@@ -463,6 +463,40 @@ CSV_COLS = [
     "ERP재고",
 ]
 
+# =====
+# 품명 문자열 보고 구분 값 추론
+# =====
+
+def infer_label_gubun_from_name(name: str) -> str:
+    """
+    품명 문자열을 보고 '구분' 값 자동 추론.
+    품명에 아래 키워드가 포함되어 있으면 그 값을 그대로 반환.
+    없으면 빈 문자열("") 반환.
+    """
+    if not isinstance(name, str):
+        return ""
+
+    candidates = [
+        "용기전면라벨",
+        "용기후면라벨",
+        "용기상단라벨",
+        "용기우측라벨",
+        "용기좌측라벨",
+        "리실러블라벨",
+        "봉합라벨",
+        "용기라벨",
+        "상단라벨",
+        "엠블럼",
+        "실링지",
+        "덧방라벨",
+    ]
+    # 더 긴 문자열을 먼저 체크해서 '용기라벨'보다 '용기전면라벨' 같은 게 우선
+    for key in sorted(candidates, key=len, reverse=True):
+        if key in name:
+            return key
+    return ""
+
+
 # --------
 # 기간 기준 입고 수량 합계
 # --------
