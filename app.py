@@ -3319,15 +3319,6 @@ if menu == "🏷 라벨 수량 계산":
             key="label_film_weight",
         )
 
-    # 기준샘플 매수
-    with col_calc2:
-        base_count = st.number_input(
-            "기준샘플 매수 (장 수)",
-            min_value=0.0,
-            step=1.0,
-            key="label_base_count",
-        )
-
     # 지관무게
     with col_calc3:
         core_weight = st.number_input(
@@ -3337,6 +3328,16 @@ if menu == "🏷 라벨 수량 계산":
             key="label_core_weight",
         )
 
+    
+    # 기준샘플 매수
+    with col_calc2:
+        base_count = st.number_input(
+            "기준샘플 매수 (장 수)",
+            min_value=0.0,
+            step=1.0,
+            key="label_base_count",
+        )
+    
     # 샘플무게
     with col_calc4:
         sample_weight = st.number_input(
