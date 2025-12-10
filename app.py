@@ -3614,7 +3614,12 @@ if menu == "🏷 라벨 수량 계산":
                     "품명": new_name,
                     "구분": gubun,  # 위에서 입력/자동설정한 구분 값 사용
 
-                    "지관무게": new_core_weight if new_core_weight > 0 else 0.0,
+                    # 🔥 자동계산된 지관무게는 지관무게 컬럼에 넣지 말 것!
+                    "지관무게": None,
+
+                    # 🔥 자동계산값은 여기만 저장한다
+                    "지관무게(추정값)": est_val,
+
                     "추정값": est_val,
                     "오차": err_val,
 
@@ -3623,11 +3628,12 @@ if menu == "🏷 라벨 수량 계산":
                     "높이": new_height,
 
                     "1R무게": None,
-                    # 🔻 여기! DB에는 사람이 선택한 문자열 그대로 저장
+
+                    # 🔻 DB에는 사람이 선택한 문자열 그대로 저장
                     "기준샘플": selected_base_sample_display,
+
                     "샘플무게": new_sample_weight,
                 }
-
 
                 df_label_new = pd.concat(
                     [df_label, pd.DataFrame([new_row])],
