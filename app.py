@@ -3273,23 +3273,36 @@ if menu == "🏷 라벨 수량 계산":
                 sel_idx = opt_map[selected_label]
                 selected_row = df_hit.loc[sel_idx]
 
-                # 🔹 DB에서 값 가져오기
+                # 🔹 1순위: 라벨DB의 지관무게
                 core_w = safe_num(selected_row.get("지관무게", 0))
-                est_w = safe_num(selected_row.get("추정값", 0))
+
+                # 🔹 2순위: 지관무게(추정값) → fallback: 기존 추정값 컬럼
+                est_candidate = selected_row.get("지관무게(추정값)", None)
+                try:
+                    is_nan = pd.isna(est_candidate)
+                except Exception:
+                    is_nan = False
+
+                if est_candidate is None or is_nan:
+                    est_candidate = selected_row.get("추정값", 0)
+
+                est_w = safe_num(est_candidate)
+
+                # 🔹 기타 값들
                 sample_w = safe_num(selected_row.get("샘플무게", 0))
                 base_cnt = parse_label_sample_count(selected_row.get("기준샘플", ""))
 
-                # 지관무게가 없으면 추정값 사용
+                # ✅ 지관무게 값이 없거나(0 이하) 유효하지 않은 경우 → 추정값 사용
                 if core_w <= 0 and est_w > 0:
                     core_w = est_w
 
-                # 세션에 주입 → 아래 number_input 기본값으로 사용
+                # 🔽 세션에 값 주입 → 아래 number_input 기본값으로 사용됨
                 st.session_state["label_core_weight"] = float(core_w)
                 st.session_state["label_sample_weight"] = float(sample_w)
                 st.session_state["label_base_count"] = float(base_cnt)
 
                 st.caption(
-                    f"선택된 라벨의 지관무게 / 샘플무게 / 기준샘플(매수)을 계산기에 반영했습니다."
+                    "선택된 라벨의 지관무게 / 샘플무게 / 기준샘플(매수)을 계산기에 반영했습니다."
                 )
 
     # ---------- (2) 실제 계산 입력 영역 ----------
@@ -3642,6 +3655,34 @@ if menu == "🏷 라벨 수량 계산":
 
         df_label = st.session_state["label_db"].copy()
 
+        # 🔄 외경/내경/높이 기준으로 지관무게(추정값) 자동 계산
+        if all(c in df_label.columns for c in ["외경", "내경", "높이"]):
+            def _calc_core(row):
+                try:
+                    od = float(row["외경"])
+                    id_ = float(row["내경"])
+                    h = float(row["높이"])
+                    if od > 0 and h > 0 and od > id_ >= 0:
+                        return (
+                            math.pi
+                            * h
+                            * ((od ** 2 - id_ ** 2) / 4.0)
+                            * 0.78
+                        )
+                except Exception:
+                    return None
+                return None
+
+            df_label["지관무게(추정값)"] = df_label.apply(_calc_core, axis=1)
+            df_label["지관무게(추정값)"] = df_label["지관무게(추정값)"].round(2)
+
+            # 세션에도 반영 (다른 탭에서 쓰기 위함)
+            df_tmp = st.session_state["label_db"].copy()
+            df_tmp["지관무게(추정값)"] = df_label["지관무게(추정값)"]
+            st.session_state["label_db"] = df_tmp
+            df_label = df_tmp
+
+
         # 미리보기용 컬럼
         cols_preview = [
             c
@@ -3654,6 +3695,7 @@ if menu == "🏷 라벨 수량 계산":
                 "내경",
                 "높이",
                 "지관무게",
+                "지관무게(추정값)",
                 "기준샘플",
                 "샘플무게",
             ]
