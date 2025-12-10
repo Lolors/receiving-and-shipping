@@ -3292,119 +3292,82 @@ if menu == "🏷 라벨 수량 계산":
         if "df_bom_raw" in globals():
             df_bom_for_label = df_bom_raw.copy()
 
-            # ✅ 품번: C열 (자재 품번)
+            # ✅ 품번은 C열 고정
             bom_part_col = pick_col(df_bom_for_label, "C", ["품번"])
+            # ✅ 품명은 D열(라벨/엠블럼/실링 들어 있는 열) 우선 사용
+            bom_name_col = pick_col(df_bom_for_label, "D", ["품명"])
+            # 정말 D열이 없을 때만 B열을 임시로 사용
+            if bom_name_col is None:
+                bom_name_col = pick_col(df_bom_for_label, "B", ["품명"])
 
-            # ✅ 품명 표시용: D열
-            bom_name_col_D = pick_col(df_bom_for_label, "D", ["품명"])
-            # ✅ (필터 용) B열도 같이 참고 — 실제로 라벨/엠블럼/실링 글자가 여기 있을 수 있어서
-            bom_name_col_B = pick_col(df_bom_for_label, "B", ["품명"])
+            new_bom_search = st.text_input(
+                "BOM 자재 품번 검색 (부분일치, C열 기준 / 품명 D열도 함께 검색)",
+                key="label_new_bom_search",
+                placeholder="예: 2GNTMSK-001A17, 바이피토 등",
+            )
 
-            if not bom_part_col or not bom_name_col_D:
-                st.warning("BOM 시트에서 품번(C열) 또는 품명(D열) 컬럼을 찾지 못했습니다.")
-            else:
-                new_bom_search = st.text_input(
-                    "BOM 자재 품번 검색 (부분일치, C열 기준 / 품명 D열도 함께 검색)",
-                    key="label_new_bom_search",
-                    placeholder="예: 027A14, 라벨명, 엠블럼 등",
+            df_bom_hit = pd.DataFrame()
+
+            if new_bom_search and bom_part_col and bom_name_col:
+                keyword = new_bom_search.strip()
+
+                # 🔎 품번(C열) + 품명(D열) 둘 다 "문자열 포함" 검색 (정규식 아님)
+                mask_search = (
+                    df_bom_for_label[bom_part_col].astype(str).str.contains(
+                        keyword, case=False, na=False, regex=False
+                    )
+                    | df_bom_for_label[bom_name_col].astype(str).str.contains(
+                        keyword, case=False, na=False, regex=False
+                    )
                 )
 
-                df_bom_hit = pd.DataFrame()
-                if new_bom_search:
-                    search_val = str(new_bom_search).strip()
+                # 🔹 품명 D열에서만 라벨/엠블럼/실링 키워드 필터
+                mask_label = df_bom_for_label[bom_name_col].astype(str).str.contains(
+                    r"(라벨|엠블럼|실링)", na=False
+                )
 
-                    # 🔎 품번(C열) 포함 검색 (공백 제거 후)
-                    mask_part = df_bom_for_label[bom_part_col].astype(str).str.strip().str.contains(
-                        search_val,
-                        case=False,
-                        na=False,
-                        regex=False,  # 단순 포함
+                df_bom_hit = (
+                    df_bom_for_label.loc[mask_search & mask_label, [bom_part_col, bom_name_col]]
+                    .drop_duplicates()
+                    .head(50)
+                )
+
+                if not df_bom_hit.empty:
+                    df_bom_hit = df_bom_hit.rename(
+                        columns={bom_part_col: "BOM_품번", bom_name_col: "BOM_품명"}
+                    )
+                    st.dataframe(
+                        df_bom_hit,
+                        use_container_width=True,
+                        height=200,
                     )
 
-                    # 🔎 품명(D열) 포함 검색
-                    mask_name_D = df_bom_for_label[bom_name_col_D].astype(str).str.contains(
-                        search_val,
-                        case=False,
-                        na=False,
-                        regex=False,
+                    # 🔸 검색 결과 중 하나 선택 → 아래 입력 기본값으로 사용
+                    options = []
+                    opt_map = {}
+                    for idx, row in df_bom_hit.iterrows():
+                        p = str(row["BOM_품번"])
+                        n = str(row["BOM_품명"])
+                        label = f"{p} | {n}"
+                        options.append(label)
+                        opt_map[label] = idx
+
+                    selected_bom = st.selectbox(
+                        "라벨로 등록할 품목 선택",
+                        ["선택 안 함"] + options,
+                        key="label_new_bom_select",
                     )
 
-                    # 🔎 (옵션) 품명(B열) 포함 검색
-                    if bom_name_col_B:
-                        mask_name_B = df_bom_for_label[bom_name_col_B].astype(str).str.contains(
-                            search_val,
-                            case=False,
-                            na=False,
-                            regex=False,
-                        )
-                    else:
-                        mask_name_B = False
-
-                    # 👉 품번 또는 품명(D/B) 중 하나라도 검색어를 포함하면 우선 후보
-                    mask_bom = mask_part | mask_name_D | mask_name_B
-
-                    # 🔹 라벨/엠블럼/실링이 들어가는 행만 남기기 (B열·D열 모두 검사)
-                    kw_pattern = r"(라벨|엠블럼|실링)"
-
-                    mask_label_D = df_bom_for_label[bom_name_col_D].astype(str).str.contains(
-                        kw_pattern,
-                        case=False,
-                        na=False,
-                    )
-
-                    if bom_name_col_B:
-                        mask_label_B = df_bom_for_label[bom_name_col_B].astype(str).str.contains(
-                            kw_pattern,
-                            case=False,
-                            na=False,
-                        )
-                    else:
-                        mask_label_B = False
-
-                    mask_label = mask_label_D | mask_label_B
-
-                    # 최종 필터
-                    df_bom_hit = df_bom_for_label.loc[
-                        mask_bom & mask_label, [bom_part_col, bom_name_col_D]
-                    ].copy()
-
-                    df_bom_hit = df_bom_hit.drop_duplicates().head(50)
-
-                    if not df_bom_hit.empty:
-                        # ✅ C열 → BOM_품번, D열 → BOM_품명 (표시용)
-                        df_bom_hit = df_bom_hit.rename(
-                            columns={bom_part_col: "BOM_품번", bom_name_col_D: "BOM_품명"}
-                        )
-                        st.dataframe(
-                            df_bom_hit,
-                            use_container_width=True,
-                            height=200,
-                        )
-
-                        # 🔸 검색 결과 중 하나 선택 → 아래 입력 기본값으로 사용
-                        options = []
-                        opt_map = {}
-                        for idx, row in df_bom_hit.iterrows():
-                            p = str(row["BOM_품번"]).strip()
-                            n = str(row["BOM_품명"])
-                            label = f"{p} | {n}"
-                            options.append(label)
-                            opt_map[label] = idx
-
-                        selected_bom = st.selectbox(
-                            "라벨로 등록할 품목 선택",
-                            ["선택 안 함"] + options,
-                            key="label_new_bom_select",
-                        )
-
-                        if selected_bom != "선택 안 함":
-                            sel_idx = opt_map[selected_bom]
-                            sel_row = df_bom_hit.loc[sel_idx]
-                            # 선택된 BOM 품번/품명을 아래 입력값 기본으로 주입
-                            st.session_state["label_new_part"] = str(sel_row["BOM_품번"]).strip()
-                            st.session_state["label_new_name"] = str(sel_row["BOM_품명"])
-                    else:
-                        st.caption("검색 조건 + (라벨/엠블럼/실링 포함) 조건에 맞는 BOM 행이 없습니다.")
+                    if selected_bom != "선택 안 함":
+                        sel_idx = opt_map[selected_bom]
+                        sel_row = df_bom_hit.loc[sel_idx]
+                        # 선택된 BOM 품번/품명을 아래 입력값 기본으로 주입
+                        st.session_state["label_new_part"] = str(sel_row["BOM_품번"])
+                        st.session_state["label_new_name"] = str(sel_row["BOM_품명"])
+                else:
+                    st.caption("검색 조건 + 라벨/엠블럼/실링 조건에 맞는 BOM 행이 없습니다.")
+            elif not bom_part_col or not bom_name_col:
+                st.warning("BOM 시트에서 품번(C열) 또는 품명(D열/B열) 컬럼을 찾지 못했습니다.")
         else:
             st.info("BOM 시트 검색은 메인 부자재 DB 업로드 후 사용 가능합니다.")
 
