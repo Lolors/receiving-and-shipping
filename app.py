@@ -3433,9 +3433,11 @@ if menu == "🏷 라벨 수량 계산":
         else:
             st.info("BOM 시트 검색은 메인 부자재 DB 업로드 후 사용 가능합니다.")
 
-        st.markdown("#### 실제로 DB에 저장할 라벨 정보 입력")
+        st.markdown("#### 라벨 정보 입력")
 
-        # 선택 가능한 구분 목록
+        st.markdown("#### 라벨 정보 입력")
+
+        # 선택 가능한 구분 목록 (필요하면 나중에 selectbox로 쓸 수 있게 남겨둠)
         if "LABEL_TYPES" in globals():
             gubun_choices = LABEL_TYPES
         elif "구분" in df_label.columns:
@@ -3444,9 +3446,9 @@ if menu == "🏷 라벨 수량 계산":
             gubun_choices = []
 
         # --------------------------------------------------
-        # 1️⃣ 첫 번째 줄: 라벨 품번 / 품명 / 구분
+        # 1️⃣ 첫 번째 줄: 라벨 품번 / 품명 / 구분(자동 인식)
         # --------------------------------------------------
-        col1, col2, col3 = st.columns([0.5, 1.5, 1])
+        col1, col2, col3 = st.columns([1.5, 1.5, 1])
 
         with col1:
             new_part = st.text_input(
@@ -3465,8 +3467,11 @@ if menu == "🏷 라벨 수량 계산":
         auto_gubun = infer_label_gubun_from_name(new_name)
 
         # 👉 구분이 아직 비어 있을 때만 자동으로 채워주기
-        if auto_gubun and not st.session_state.get("label_gubun"):
-            st.session_state["label_gubun"] = auto_gubun
+        #    (사용자가 직접 수정한 값은 덮어쓰지 않기 위해)
+        if auto_gubun:
+            current_gubun = st.session_state.get("label_gubun", "")
+            if not current_gubun:  # 아직 아무것도 안 들어있을 때만 자동 세팅
+                st.session_state["label_gubun"] = auto_gubun
 
         with col3:
             gubun = st.text_input(
