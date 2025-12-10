@@ -3424,27 +3424,47 @@ if menu == "🏷 라벨 수량 계산":
                     key="label_new_h",
                 )
 
-            col_sample1, col_sample2 = st.columns(2)
-            with col_sample1:
-                new_base_str = st.text_input(
-                    "기준샘플 (예: '4매', '2매(아이마크)')",
-                    key="label_new_base_str",
-                    placeholder="예: 4매",
-                )
-            with col_sample2:
-                new_sample_weight = st.number_input(
-                    "샘플무게 (g)",
-                    min_value=0.0,
-                    step=0.01,
-                    key="label_new_sample_weight",
-                )
-
-            new_core_weight = st.number_input(
-                "실측 지관무게 (g, 선택입력)",
-                min_value=0.0,
-                step=0.1,
-                key="label_new_core_weight",
+        col_sample1, col_sample2 = st.columns(2)
+        with col_sample1:
+            base_options = [
+                "1매",
+                "2매(아이마크)",
+                "4매",
+                "20매",
+                "50매",
+                "100매",
+                "(직접 입력)",
+            ]
+            base_choice = st.selectbox(
+                "기준샘플",
+                options=base_options,
+                key="label_new_base_choice",
             )
+
+            if base_choice == "(직접 입력)":
+                new_base_str = st.text_input(
+                    "기준샘플 직접 입력 (예: '3매', '8매(특수)')",
+                    key="label_new_base_str_custom",
+                    placeholder="예: 3매",
+                )
+            else:
+                new_base_str = base_choice
+
+        with col_sample2:
+            new_sample_weight = st.number_input(
+                "샘플무게 (g)",
+                min_value=0.0,
+                step=0.01,
+                key="label_new_sample_weight",
+            )
+
+        new_core_weight = st.number_input(
+            "실측 지관무게 (g, 선택입력)",
+            min_value=0.0,
+            step=0.1,
+            key="label_new_core_weight",
+        )
+
 
             # 🔹 외경/내경/높이 → 측정값(추정값) 미리 보여주기
             est_preview = None
