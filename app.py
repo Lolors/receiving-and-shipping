@@ -3375,54 +3375,53 @@ if menu == "🏷 라벨 수량 계산":
 
         st.markdown("#### 실제로 DB에 저장할 라벨 정보 입력")
 
-        # ✅ 여기부터는 form으로 묶어서,
-        #    저장 버튼을 눌렀을 때만 검증 / 에러가 뜨도록 함
+        # ✅ 여기부터는 form 없이, 일반 위젯 + 버튼 조합
 
-            # 선택 가능한 구분 목록
-            if "LABEL_TYPES" in globals():
-                gubun_choices = LABEL_TYPES
-            elif "구분" in df_label.columns:
-                gubun_choices = sorted(df_label["구분"].dropna().unique().tolist())
-            else:
-                gubun_choices = []
+        # 선택 가능한 구분 목록  🔴🔴🔴 여기부터 들여쓰기를 st.markdown 과 같은 레벨로!
+        if "LABEL_TYPES" in globals():
+            gubun_choices = LABEL_TYPES
+        elif "구분" in df_label.columns:
+            gubun_choices = sorted(df_label["구분"].dropna().unique().tolist())
+        else:
+            gubun_choices = []
 
-            new_part = st.text_input(
-                "라벨 품번 (DB에 저장할 실제 품번)",
-                key="label_new_part",
-                placeholder="예: 2KKMMSK-027A14-xxx",
-            )
-            new_name = st.text_input(
-                "품명",
-                key="label_new_name",
-            )
-            new_gubun = st.selectbox(
-                "구분",
-                options=gubun_choices if gubun_choices else ["(직접 입력)"],
-                key="label_new_gubun",
-            )
+        new_part = st.text_input(
+            "라벨 품번 (DB에 저장할 실제 품번)",
+            key="label_new_part",
+            placeholder="예: 2KKMMSK-027A14-xxx",
+        )
+        new_name = st.text_input(
+            "품명",
+            key="label_new_name",
+        )
+        new_gubun = st.selectbox(
+            "구분",
+            options=gubun_choices if gubun_choices else ["(직접 입력)"],
+            key="label_new_gubun",
+        )
 
-            col_dim1, col_dim2, col_dim3 = st.columns(3)
-            with col_dim1:
-                new_od = st.number_input(
-                    "외경 (mm)",
-                    min_value=0.0,
-                    step=0.1,
-                    key="label_new_od",
-                )
-            with col_dim2:
-                new_id = st.number_input(
-                    "내경 (mm)",
-                    min_value=0.0,
-                    step=0.1,
-                    key="label_new_id",
-                )
-            with col_dim3:
-                new_h = st.number_input(
-                    "높이 (mm)",
-                    min_value=0.0,
-                    step=0.1,
-                    key="label_new_h",
-                )
+        col_dim1, col_dim2, col_dim3 = st.columns(3)
+        with col_dim1:
+            new_od = st.number_input(
+                "외경 (mm)",
+                min_value=0.0,
+                step=0.1,
+                key="label_new_od",
+            )
+        with col_dim2:
+            new_id = st.number_input(
+                "내경 (mm)",
+                min_value=0.0,
+                step=0.1,
+                key="label_new_id",
+            )
+        with col_dim3:
+            new_h = st.number_input(
+                "높이 (mm)",
+                min_value=0.0,
+                step=0.1,
+                key="label_new_h",
+            )
 
         col_sample1, col_sample2 = st.columns(2)
         with col_sample1:
@@ -3472,7 +3471,7 @@ if menu == "🏷 라벨 수량 계산":
             est_preview = round(est_preview, 2)
             st.caption(f"계산된 지관 추정값(측정값): 약 **{est_preview} g**")
 
-        # ✅ 일반 버튼으로 사용 (form_submit_button 아님!)
+        # ✅ 일반 버튼
         save_clicked = st.button("✅ 입력 완료 (DB에 저장)", key="label_new_save_btn")
 
         if save_clicked:
