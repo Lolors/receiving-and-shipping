@@ -3625,9 +3625,11 @@ if menu == "🏷 라벨 수량 계산":
                     "높이": new_height,
 
                     "1R무게": None,
-                    "기준샘플": new_base_sample,   # 숫자 1/2/4/20/50/100
+                    # 🔻 여기! DB에는 사람이 선택한 문자열 그대로 저장
+                    "기준샘플": selected_base_sample_display,
                     "샘플무게": new_sample_weight,
                 }
+
 
                 df_label_new = pd.concat(
                     [df_label, pd.DataFrame([new_row])],
