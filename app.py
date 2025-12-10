@@ -3448,8 +3448,6 @@ if menu == "🏷 라벨 수량 계산":
 
         st.markdown("#### 라벨 정보 입력")
 
-        st.markdown("#### 라벨 정보 입력")
-
         # 선택 가능한 구분 목록 (필요하면 나중에 selectbox로 쓸 수 있게 남겨둠)
         if "LABEL_TYPES" in globals():
             gubun_choices = LABEL_TYPES
