@@ -3445,7 +3445,7 @@ if menu == "🏷 라벨 수량 계산":
         # --------------------------------------------------
         # 1️⃣ 첫 번째 줄: 라벨 품번 / 품명 / 구분
         # --------------------------------------------------
-        col1, col2, col3 = st.columns([0.5, 1.5, 1])
+        col1, col2, col3 = st.columns([1.5, 1.5, 1])
 
         with col1:
             new_part = st.text_input(
@@ -3460,14 +3460,17 @@ if menu == "🏷 라벨 수량 계산":
                 key="label_new_name",
             )
 
-        # 자동 구분 추론
+        # 🔍 품명을 보고 구분 자동 추론
         auto_gubun = infer_label_gubun_from_name(new_name)
+
+        # 👉 구분이 아직 비어 있을 때만 자동으로 채워주기
+        if auto_gubun and not st.session_state.get("label_gubun"):
+            st.session_state["label_gubun"] = auto_gubun
 
         with col3:
             gubun = st.text_input(
                 "구분",
                 key="label_gubun",
-                value=auto_gubun,
             )
 
         # --------------------------------------------------
