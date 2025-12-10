@@ -6,6 +6,7 @@ import io
 import os
 from html import escape
 from pathlib import Path
+import math
 
 # ============ S3 연동 ============
 
@@ -3474,7 +3475,7 @@ if menu == "🏷 라벨 수량 계산":
             )
 
         # --------------------------------------------------
-        # 2️⃣ 두 번째 줄: 외경 / 내경 / 높이 / 기준샘플 / 샘플무게 / 실측 지관무게
+        # 2️⃣ 두 번째 줄: 외경 / 내경 / 높이 / 기준샘플 / 샘플무게 / 지관무게(자동계산)
         # --------------------------------------------------
         colA, colB, colC, colD, colE, colF = st.columns(6)
 
@@ -3484,6 +3485,7 @@ if menu == "🏷 라벨 수량 계산":
                 min_value=0.0,
                 step=0.1,
                 key="label_new_od",
+                value=st.session_state.get("label_new_od", 0.0),
             )
 
         with colB:
@@ -3492,6 +3494,7 @@ if menu == "🏷 라벨 수량 계산":
                 min_value=0.0,
                 step=0.1,
                 key="label_new_id",
+                value=st.session_state.get("label_new_id", 0.0),
             )
 
         with colC:
@@ -3500,10 +3503,11 @@ if menu == "🏷 라벨 수량 계산":
                 min_value=0.0,
                 step=0.1,
                 key="label_new_height",
+                value=st.session_state.get("label_new_height", 0.0),
             )
 
+        # 🔽 기준샘플: "1매,2매(아이마크),4매,20매,50매,100매" 선택 + 내부 값은 1/2/4/20/50/100
         with colD:
-            # 선택지(표시용 문자열)
             base_sample_display = [
                 "1매",
                 "2매(아이마크)",
@@ -3512,8 +3516,6 @@ if menu == "🏷 라벨 수량 계산":
                 "50매",
                 "100매",
             ]
-
-            # 계산용 값 매핑
             base_sample_map = {
                 "1매": 1,
                 "2매(아이마크)": 2,
@@ -3528,10 +3530,8 @@ if menu == "🏷 라벨 수량 계산":
                 base_sample_display,
                 key="label_new_base_sample",
             )
-
-            # 🔥 계산에 사용할 실제 숫자값
+            # 계산에 쓸 실제 숫자 (1/2/4/20/50/100)
             new_base_sample = base_sample_map[selected_base_sample_display]
-
 
         with colE:
             new_sample_weight = st.number_input(
@@ -3539,59 +3539,78 @@ if menu == "🏷 라벨 수량 계산":
                 min_value=0.0,
                 step=0.01,
                 key="label_new_sample_weight",
+                value=st.session_state.get("label_new_sample_weight", 0.0),
             )
 
+        # 🔥 지관무게(측정값) 자동 계산: π * 높이 * ((외경² - 내경²)/4) * 0.78
         with colF:
-            new_core_weight = st.number_input(
-                "실측 지관무게 (g)",
-                min_value=0.0,
-                step=0.01,
-                key="label_new_core_weight",
+            core_weight_calc = None
+            if new_od > 0 and new_id >= 0 and new_height > 0 and new_od > new_id:
+                try:
+                    core_weight_calc = (
+                        math.pi
+                        * new_height
+                        * ((new_od ** 2 - new_id ** 2) / 4.0)
+                        * 0.78
+                    )
+                except Exception:
+                    core_weight_calc = None
+
+            if core_weight_calc is not None and core_weight_calc > 0:
+                core_weight_display = round(core_weight_calc, 2)
+            else:
+                core_weight_display = 0.0
+
+            # DB에 실제로 저장할 값
+            new_core_weight = core_weight_calc or 0.0
+
+            st.number_input(
+                "지관무게(측정값, 자동계산) (g)",
+                value=core_weight_display,
+                key="label_new_core_weight_display",
+                disabled=True,
             )
 
-        # 🔹 외경/내경/높이 → 측정값(추정값) 미리 보여주기
-        est_preview = None
-        if new_od > 0 and new_id > 0 and new_h > 0:
-            est_preview = 3.14 * new_h * ((new_od ** 2 - new_id ** 2) / 4.0) * 0.78
-            est_preview = round(est_preview, 2)
-            st.caption(f"계산된 지관 추정값(측정값): 약 **{est_preview} g**")
+        # 🔹 계산된 값 간단 미리보기
+        if core_weight_calc is not None and core_weight_calc > 0:
+            st.caption(f"계산된 지관 추정값(측정값): 약 **{core_weight_display} g**")
 
-        # ✅ 일반 버튼
+        # ✅ 입력값을 DB에 저장하는 버튼
         save_clicked = st.button("✅ 입력 완료 (DB에 저장)", key="label_new_save_btn")
 
         if save_clicked:
             # 필수값 체크
             if not new_part or not new_name:
                 st.error("품번과 품명은 반드시 입력해야 합니다.")
-            elif new_od <= 0 or new_id <= 0 or new_h <= 0:
+            elif new_od <= 0 or new_id < 0 or new_height <= 0:
                 st.error("외경, 내경, 높이는 모두 0보다 큰 값이어야 합니다.")
             elif new_sample_weight <= 0:
                 st.error("샘플무게(g)는 0보다 큰 값이어야 합니다.")
             else:
-                # 추정값 계산
-                est_val = 3.14 * new_h * ((new_od ** 2 - new_id ** 2) / 4.0) * 0.78
-                est_val = round(est_val, 2)
+                # 추정값 = 자동 계산된 지관무게
+                est_val = core_weight_calc if core_weight_calc else 0.0
+                est_val = round(est_val, 2) if est_val else 0.0
 
-                # 오차: 실측 지관무게가 있으면 (추정값 - 실무게), 없으면 0
-                if new_core_weight > 0:
-                    err_val = est_val - new_core_weight
-                else:
-                    err_val = 0.0
+                # 오차: 지금은 지관무게도 추정값이기 때문에 0으로 둠
+                err_val = 0.0
 
                 # 새 행 구성 (parse_label_db 구조에 맞춤)
                 new_row = {
                     "샘플번호": None,
                     "품번": new_part,
                     "품명": new_name,
-                    "구분": new_gubun if new_gubun != "(직접 입력)" else "",
+                    "구분": gubun,  # 위에서 입력/자동설정한 구분 값 사용
+
                     "지관무게": new_core_weight if new_core_weight > 0 else 0.0,
                     "추정값": est_val,
                     "오차": err_val,
+
                     "외경": new_od,
                     "내경": new_id,
-                    "높이": new_h,
+                    "높이": new_height,
+
                     "1R무게": None,
-                    "기준샘플": new_base_str,
+                    "기준샘플": new_base_sample,   # 숫자 1/2/4/20/50/100
                     "샘플무게": new_sample_weight,
                 }
 
@@ -3624,7 +3643,18 @@ if menu == "🏷 라벨 수량 계산":
         # 미리보기용 컬럼
         cols_preview = [
             c
-            for c in ["샘플번호", "품번", "품명", "구분", "지관무게", "기준샘플", "샘플무게"]
+            for c in [
+                "샘플번호",
+                "품번",
+                "품명",
+                "구분",
+                "외경",
+                "내경",
+                "높이",
+                "지관무게",
+                "기준샘플",
+                "샘플무게",
+            ]
             if c in df_label.columns
         ]
 
