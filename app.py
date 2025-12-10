@@ -3434,9 +3434,7 @@ if menu == "🏷 라벨 수량 계산":
 
         st.markdown("#### 실제로 DB에 저장할 라벨 정보 입력")
 
-        # ✅ 여기부터는 form 없이, 일반 위젯 + 버튼 조합
-
-        # 선택 가능한 구분 목록  🔴🔴🔴 여기부터 들여쓰기를 st.markdown 과 같은 레벨로!
+        # 선택 가능한 구분 목록
         if "LABEL_TYPES" in globals():
             gubun_choices = LABEL_TYPES
         elif "구분" in df_label.columns:
@@ -3453,8 +3451,9 @@ if menu == "🏷 라벨 수량 계산":
             "품명",
             key="label_new_name",
         )
-        # 품명을 보고 자동 추론
-        auto_gubun = infer_label_gubun_from_name(name)
+
+        # 🔍 품명을 보고 자동 추론
+        auto_gubun = infer_label_gubun_from_name(new_name)
 
         gubun = st.text_input(
             "구분",
@@ -3470,6 +3469,7 @@ if menu == "🏷 라벨 수량 계산":
                 step=0.1,
                 key="label_new_od",
             )
+
         with col_dim2:
             new_id = st.number_input(
                 "내경 (mm)",
