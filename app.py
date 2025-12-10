@@ -3640,6 +3640,63 @@ if menu == "🏷 라벨 수량 계산":
 
         df_label = st.session_state["label_db"].copy()
 
+        # 🔁 🔥 백업 파일에서 외경/내경/높이 복구하기
+        st.markdown("#### 🔁 백업에서 외경/내경/높이 복구")
+
+        backup_file = st.file_uploader(
+            "외경/내경/높이 정보가 들어있는 예전 라벨DB 파일 업로드 (엑셀/CSV)",
+            type=["xlsx", "xls", "csv"],
+            key="label_backup_upload",
+        )
+
+        if backup_file is not None:
+            try:
+                # 백업 파일 읽기
+                if backup_file.name.lower().endswith(".csv"):
+                    df_old = pd.read_csv(backup_file)
+                else:
+                    df_old = pd.read_excel(backup_file)
+
+                # 필요한 컬럼만 남기기 (품번 + 외경/내경/높이가 있다고 가정)
+                needed_cols = ["품번", "외경", "내경", "높이"]
+                missing = [c for c in needed_cols if c not in df_old.columns]
+                if missing:
+                    st.error(f"백업 파일에 다음 컬럼이 없습니다: {', '.join(missing)}")
+                else:
+                    df_old_small = df_old[needed_cols].copy()
+
+                    # 현재 DB에 외경/내경/높이 컬럼 없으면 생성
+                    for c in ["외경", "내경", "높이"]:
+                        if c not in df_label.columns:
+                            df_label[c] = None
+
+                    # 품번 기준으로 머지
+                    df_merged = df_label.merge(
+                        df_old_small,
+                        on="품번",
+                        how="left",
+                        suffixes=("", "_old"),
+                    )
+
+                    # 기존 값이 비어 있으면 old 값으로 채우기
+                    for c in ["외경", "내경", "높이"]:
+                        old_col = f"{c}_old"
+                        if old_col in df_merged.columns:
+                            df_merged[c] = df_merged[c].fillna(df_merged[old_col])
+                            df_merged = df_merged.drop(columns=[old_col])
+
+                    # 세션/저장 반영
+                    st.session_state["label_db"] = df_merged
+                    save_label_db_to_s3(df_merged)
+
+                    df_label = df_merged  # 아래 미리보기도 복구된 값 사용
+                    st.success("백업 파일을 기준으로 외경/내경/높이 정보를 복구했습니다.")
+
+            except Exception as e:
+                st.error(f"백업 파일 처리 중 오류가 발생했습니다: {e}")
+
+        
+
         # 미리보기용 컬럼
         cols_preview = [
             c
