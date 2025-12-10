@@ -3466,12 +3466,9 @@ if menu == "🏷 라벨 수량 계산":
         # 🔍 품명을 보고 구분 자동 추론
         auto_gubun = infer_label_gubun_from_name(new_name)
 
-        # 👉 구분이 아직 비어 있을 때만 자동으로 채워주기
-        #    (사용자가 직접 수정한 값은 덮어쓰지 않기 위해)
+        # 👉 품명을 바꿀 때마다, 자동으로 구분도 같이 갱신
         if auto_gubun:
-            current_gubun = st.session_state.get("label_gubun", "")
-            if not current_gubun:  # 아직 아무것도 안 들어있을 때만 자동 세팅
-                st.session_state["label_gubun"] = auto_gubun
+            st.session_state["label_gubun"] = auto_gubun
 
         with col3:
             gubun = st.text_input(
