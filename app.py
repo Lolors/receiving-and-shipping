@@ -2379,27 +2379,52 @@ if menu == "↩️ 환입 관리":
                         df_full = recalc_return_expectation(df_return, aggs)
                         st.session_state["환입재고예상"] = df_full
 
-                        # ERP재고 매칭
                         stock_part_col = pick_col(df_stock_raw, "D", ["품번"])
                         stock_qty_col = (
                             "실재고수량"
                             if "실재고수량" in df_stock_raw.columns
                             else pick_col(df_stock_raw, "N", ["실재고수량"])
                         )
+                        stock_wc_col = pick_col(df_stock_raw, "A", ["작업장", "WC"])
 
                         if stock_part_col and stock_qty_col:
-                            # 🔹 품번별 실재고수량 합계로 ERP재고 계산
-                            tmp = df_stock_raw.copy()
-                            tmp["_품번_key"] = tmp[stock_part_col].astype(str)
-                            tmp["_실재고수량"] = tmp[stock_qty_col].apply(safe_num)
+                            df_stock_filtered = df_stock_raw.copy()
 
-                            # 품번별 합산
-                            stock_sum = tmp.groupby("_품번_key")["_실재고수량"].sum()
+                            # 🔹 작업장 컬럼이 있으면 WC501~504만 필터링
+                            if stock_wc_col:
+                                target_wc = ["WC501", "WC502", "WC503", "WC504"]
+                                df_stock_filtered = df_stock_filtered[
+                                    df_stock_filtered[stock_wc_col]
+                                    .astype(str)
+                                    .isin(target_wc)
+                                ]
 
-                            # df_full의 품번 기준으로 매핑
+                            # 🔹 필터링 결과가 비어있으면 ERP재고는 전부 0으로 처리
+                            if df_stock_filtered.empty:
+                                stock_map = {}
+                            else:
+                                # 품번별 실재고수량 합계 계산
+                                df_stock_filtered["_qty"] = df_stock_filtered[
+                                    stock_qty_col
+                                ].apply(safe_num)
+
+                                stock_grouped = (
+                                    df_stock_filtered
+                                    .groupby(stock_part_col, as_index=False)["_qty"]
+                                    .sum()
+                                )
+
+                                stock_map = dict(
+                                    zip(
+                                        stock_grouped[stock_part_col].astype(str),
+                                        stock_grouped["_qty"],
+                                    )
+                                )
+
                             df_full["ERP재고"] = (
-                                df_full["품번"].astype(str).map(stock_sum).fillna(0)
+                                df_full["품번"].astype(str).map(stock_map).fillna(0)
                             )
+
                         else:
                             st.warning(
                                 "재고 시트에서 품번 또는 실재고수량 컬럼을 찾을 수 없습니다."
