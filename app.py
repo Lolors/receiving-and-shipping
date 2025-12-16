@@ -2567,7 +2567,7 @@ if menu == "↩️ 환입 관리":
             start_date, end_date = date_range
         else:
             start_date = end_date = date_range
-
+ 
         # -------------------------------------------------
         # 2) data_editor 에서 쓸 표시 컬럼 구성
         #    - 공통부자재: 맨 앞
@@ -2615,17 +2615,17 @@ if menu == "↩️ 환입 관리":
         with st.form("return_editor_form"):
 
             df_edit = st.data_editor(
-                df_visible,
+                df_label_view[cols_preview_with_select],
                 use_container_width=True,
-                num_rows="fixed",
+                num_rows="dynamic",
                 hide_index=True,
                 column_config={
-                    "공통부자재": st.column_config.CheckboxColumn(
-                        "공통부자재",
+                    "선택": st.column_config.CheckboxColumn(
+                        "선택",
                         default=False,
                     )
                 },
-                key="return_editor",
+                key="label_db_editor",
             )
 
             col_btn1, col_btn2 = st.columns(2)
@@ -3796,17 +3796,35 @@ if menu == "🏷 라벨 수량 계산":
             ]
             if c in df_label.columns
         ]
+        
+        # --- 화면 표시용 DF 생성 ---
+        df_label = st.session_state["label_db"].copy()
 
-        # 삭제 체크박스 컬럼 추가 (뷰용)
+        # 🔹 화면용 복사본
         df_label_view = df_label.copy()
-        df_label_view["삭제"] = False
 
-        df_edit = st.data_editor(
-            df_label_view[cols_preview + ["삭제"]],
-            use_container_width=True,
-            num_rows="dynamic",
-            key="label_db_editor",
-        )
+        # 🔹 선택 체크박스 컬럼 추가 (삭제용)
+        df_label_view["선택"] = False
+
+        # ✅ DB에 추가된 순서가 나중일수록 위에 보이게
+        df_label_view = df_label_view.iloc[::-1].reset_index(drop=True)
+
+        # ✅ 미리보기 컬럼 + 맨 앞 선택 컬럼
+        cols_preview_with_select = ["선택"] + cols_preview
+
+            df_edit = st.data_editor(
+                df_label_view[cols_preview_with_select],
+                use_container_width=True,
+                num_rows="dynamic",
+                hide_index=True,
+                column_config={
+                    "선택": st.column_config.CheckboxColumn(
+                        "선택",
+                        default=False,
+                    )
+                },
+                key="label_db_editor",
+            )
 
         # 🔽 버튼 3개를 한 줄로 배치
         col_save, col_delete, col_excel = st.columns([1, 1, 1])
