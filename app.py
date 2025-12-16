@@ -3812,19 +3812,20 @@ if menu == "🏷 라벨 수량 계산":
         # ✅ 미리보기 컬럼 + 맨 앞 선택 컬럼
         cols_preview_with_select = ["선택"] + cols_preview
 
-            df_edit = st.data_editor(
-                df_label_view[cols_preview_with_select],
-                use_container_width=True,
-                num_rows="dynamic",
-                hide_index=True,
-                column_config={
-                    "선택": st.column_config.CheckboxColumn(
-                        "선택",
-                        default=False,
-                    )
-                },
-                key="label_db_editor",
-            )
+        df_edit = st.data_editor(
+            df_label_view[cols_preview_with_select],
+            use_container_width=True,
+            num_rows="dynamic",
+            hide_index=True,
+            column_config={
+                "선택": st.column_config.CheckboxColumn(
+                    "선택",
+                    default=False,
+                )
+            },
+            key="label_db_editor",
+        )
+
 
         # 🔽 버튼 3개를 한 줄로 배치
         col_save, col_delete, col_excel = st.columns([1, 1, 1])
