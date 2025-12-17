@@ -2313,29 +2313,8 @@ if menu == "↩️ 환입 관리":
     st.write(f"완성품번: {finished_part or '데이터 없음'}")
     st.write(f"완성품명: {finished_name or '데이터 없음'}")
 
-    # 환입 BOM 자재 목록 생성 (선택 컬럼 포함)
-    bom_component_df = pd.DataFrame(
-        {
-            "선택": True,  # 기본 전체 선택
-            "완성품번": df_bom_fin_uniq[item_col],
-            "품번": (
-                df_bom_fin_uniq[bom_component_col2]
-                if bom_component_col2 in df_bom_fin_uniq.columns
-                else ""
-            ),
-            "품명": (
-                df_bom_fin_uniq[bom_name_col2]
-                if bom_name_col2 in df_bom_fin_uniq.columns
-                else ""
-            ),
-            "단위수량": (
-                df_bom_fin_uniq["단위수량"]
-                if "단위수량" in df_bom_fin_uniq.columns
-                else ""
-            ),
-        }
-    )
-
+    # ----- BOM 자재 목록 -----
+    bom_component_df = pd.DataFrame()
     if finished_part is not None:
         bom_cols = list(df_bom_raw.columns)
         item_col = "품목코드" if "품목코드" in bom_cols else bom_cols[0]
@@ -2391,27 +2370,9 @@ if menu == "↩️ 환입 관리":
                 bom_component_df,
                 use_container_width=True,
                 num_rows="dynamic",
-                column_config={
-                    "선택": st.column_config.CheckboxColumn(
-                        "선택",
-                        default=True,
-                    )
-                },
                 key="bom_component_editor",
             )
 
-            # 🔒 방어: 반환 타입 / 컬럼 깨짐 방지
-            if not isinstance(bom_component_df, pd.DataFrame):
-                bom_component_df = pd.DataFrame(bom_component_df)
-
-            if "선택" not in bom_component_df.columns:
-                bom_component_df["선택"] = True
-            else:
-                bom_component_df["선택"] = (
-                    bom_component_df["선택"].fillna(True).astype(bool)
-                )
-            
-            
             # ===============================
             # 🔘 (여기!) 환입 데이터 불러오기 / 초기화 버튼 (가운데 정렬)
             #  → BOM 자재 표가 뜬 뒤에만 보이도록
@@ -2606,7 +2567,7 @@ if menu == "↩️ 환입 관리":
             start_date, end_date = date_range
         else:
             start_date = end_date = date_range
- 
+
         # -------------------------------------------------
         # 2) data_editor 에서 쓸 표시 컬럼 구성
         #    - 공통부자재: 맨 앞
@@ -2654,17 +2615,17 @@ if menu == "↩️ 환입 관리":
         with st.form("return_editor_form"):
 
             df_edit = st.data_editor(
-                df_label_view[cols_preview_with_select],
+                df_visible,
                 use_container_width=True,
-                num_rows="dynamic",
+                num_rows="fixed",
                 hide_index=True,
                 column_config={
-                    "선택": st.column_config.CheckboxColumn(
-                        "선택",
+                    "공통부자재": st.column_config.CheckboxColumn(
+                        "공통부자재",
                         default=False,
                     )
                 },
-                key="label_db_editor",
+                key="return_editor",
             )
 
             col_btn1, col_btn2 = st.columns(2)
@@ -3835,36 +3796,17 @@ if menu == "🏷 라벨 수량 계산":
             ]
             if c in df_label.columns
         ]
-        
-        # --- 화면 표시용 DF 생성 ---
-        df_label = st.session_state["label_db"].copy()
 
-        # 🔹 화면용 복사본
+        # 삭제 체크박스 컬럼 추가 (뷰용)
         df_label_view = df_label.copy()
-
-        # 🔹 선택 체크박스 컬럼 추가 (삭제용)
-        df_label_view["선택"] = False
-
-        # ✅ DB에 추가된 순서가 나중일수록 위에 보이게
-        df_label_view = df_label_view.iloc[::-1].reset_index(drop=True)
-
-        # ✅ 미리보기 컬럼 + 맨 앞 선택 컬럼
-        cols_preview_with_select = ["선택"] + cols_preview
+        df_label_view["삭제"] = False
 
         df_edit = st.data_editor(
-            df_label_view[cols_preview_with_select],
+            df_label_view[cols_preview + ["삭제"]],
             use_container_width=True,
             num_rows="dynamic",
-            hide_index=True,
-            column_config={
-                "선택": st.column_config.CheckboxColumn(
-                    "선택",
-                    default=False,
-                )
-            },
             key="label_db_editor",
         )
-
 
         # 🔽 버튼 3개를 한 줄로 배치
         col_save, col_delete, col_excel = st.columns([1, 1, 1])
@@ -3946,5 +3888,3 @@ if menu == "🏷 라벨 수량 계산":
                     )
                 except Exception as e:
                     st.error(f"엑셀 파일을 읽는 중 오류가 발생했습니다: {e}")
-
-
