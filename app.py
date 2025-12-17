@@ -2313,8 +2313,29 @@ if menu == "↩️ 환입 관리":
     st.write(f"완성품번: {finished_part or '데이터 없음'}")
     st.write(f"완성품명: {finished_name or '데이터 없음'}")
 
-    # ----- BOM 자재 목록 -----
-    bom_component_df = pd.DataFrame()
+    # 환입 BOM 자재 목록 생성 (선택 컬럼 포함)
+    bom_component_df = pd.DataFrame(
+        {
+            "선택": True,  # 기본 전체 선택
+            "완성품번": df_bom_fin_uniq[item_col],
+            "품번": (
+                df_bom_fin_uniq[bom_component_col2]
+                if bom_component_col2 in df_bom_fin_uniq.columns
+                else ""
+            ),
+            "품명": (
+                df_bom_fin_uniq[bom_name_col2]
+                if bom_name_col2 in df_bom_fin_uniq.columns
+                else ""
+            ),
+            "단위수량": (
+                df_bom_fin_uniq["단위수량"]
+                if "단위수량" in df_bom_fin_uniq.columns
+                else ""
+            ),
+        }
+    )
+
     if finished_part is not None:
         bom_cols = list(df_bom_raw.columns)
         item_col = "품목코드" if "품목코드" in bom_cols else bom_cols[0]
@@ -2370,9 +2391,27 @@ if menu == "↩️ 환입 관리":
                 bom_component_df,
                 use_container_width=True,
                 num_rows="dynamic",
+                column_config={
+                    "선택": st.column_config.CheckboxColumn(
+                        "선택",
+                        default=True,
+                    )
+                },
                 key="bom_component_editor",
             )
 
+            # 🔒 방어: 반환 타입 / 컬럼 깨짐 방지
+            if not isinstance(bom_component_df, pd.DataFrame):
+                bom_component_df = pd.DataFrame(bom_component_df)
+
+            if "선택" not in bom_component_df.columns:
+                bom_component_df["선택"] = True
+            else:
+                bom_component_df["선택"] = (
+                    bom_component_df["선택"].fillna(True).astype(bool)
+                )
+            
+            
             # ===============================
             # 🔘 (여기!) 환입 데이터 불러오기 / 초기화 버튼 (가운데 정렬)
             #  → BOM 자재 표가 뜬 뒤에만 보이도록
