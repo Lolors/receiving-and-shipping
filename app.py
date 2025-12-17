@@ -3800,7 +3800,10 @@ if menu == "🏷 라벨 수량 계산":
         # 삭제 체크박스 컬럼 추가 (뷰용)
         df_label_view = df_label.copy()
         df_label_view["삭제"] = False
-
+        
+        # ✅ DB에 추가된 순서가 나중일수록 위에 보이게
+        df_label_view = df_label_view.iloc[::-1].reset_index(drop=True)
+        
         df_edit = st.data_editor(
             df_label_view[cols_preview + ["삭제"]],
             use_container_width=True,
