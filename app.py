@@ -1521,9 +1521,19 @@ if menu == "📦 입고 조회":
                             name_filter, case=False, na=False
                         )
                     ]
+            df_in["_row_no"] = df_in.index  # 원본 행번호 보존
 
-            # 🔥 엑셀에서 "마지막(맨 아래) 행"이 위로 오도록: 인덱스 역순 정렬
-            df_filtered = df_filtered.iloc[::-1].reset_index(drop=True)
+            df_filtered = df_in.loc[mask, raw_cols + ["_row_no"]].copy()
+
+            # (rename / name_filter 그대로)
+
+            # ✅ 엑셀에서 맨 아래행이 위로: 행번호 큰 게 위로
+            df_filtered = (
+                df_filtered.sort_values("_row_no", ascending=False)
+                .drop(columns=["_row_no"])
+                .reset_index(drop=True)
+            )
+
 
             if df_filtered.empty:
                 st.info("선택한 기간에 해당하는 입고 데이터가 없습니다.")
