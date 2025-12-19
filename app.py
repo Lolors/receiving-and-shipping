@@ -3164,7 +3164,6 @@ if menu == "🧩 공통자재":
                             mark_1w = ""
                             mark_2w = ""
                         else:
-                            # 가장 마지막(맨 아래) 행 기준 요청날짜
                             sub = sub.sort_values(in_req_date_col)
                             last_date = sub[in_req_date_col].iloc[-1]
                             days_diff = (today - last_date).days
@@ -3194,94 +3193,81 @@ if menu == "🧩 공통자재":
                     if df_result.empty:
                         st.info("조건에 해당하는 데이터가 없습니다.")
                     else:
-                        # 최신 불출요청일이 위로 오도록 정렬 (선택사항)
                         df_result = df_result.sort_values(
                             by="불출요청일", ascending=False, na_position="last"
                         ).reset_index(drop=True)
 
-                        df_result_styled = df_result.style.set_properties(
-                            subset=["1주 이내", "2주 이내"],
-                            **{"text-align": "center"}
-                        )
-
                         st.dataframe(df_result, use_container_width=True)
 
-# =========================
-# ✅ 1주 or 2주 이내 완성품번만 BOM 조회 대상
-# =========================
-df_item_for_bom = df_result[
-    (df_result["1주 이내"] == "V") | (df_result["2주 이내"] == "V")
-].copy()
+                        # =========================
+                        # ✅ 1주 or 2주 이내 완성품번만 BOM 조회 대상
+                        # =========================
+                        df_item_for_bom = df_result[
+                            (df_result["1주 이내"] == "V") | (df_result["2주 이내"] == "V")
+                        ].copy()
 
-if df_item_for_bom.empty:
-    st.info("최근 2주 이내 불출 이력이 있는 완성품번이 없습니다.")
-else:
-    item_list = (
-        df_item_for_bom["완성품번"]
-        .dropna()
-        .astype(str)
-        .unique()
-        .tolist()
-    )
+                        if df_item_for_bom.empty:
+                            st.info("최근 2주 이내 불출 이력이 있는 완성품번이 없습니다.")
+                        else:
+                            item_list = (
+                                df_item_for_bom["완성품번"]
+                                .dropna()
+                                .astype(str)
+                                .unique()
+                                .tolist()
+                            )
 
-    st.markdown("### 📌 완성품번 선택 → BOM 정보 확인")
+                            st.markdown("### 📌 완성품번 선택 → BOM 정보 확인")
 
-    selected_item = st.selectbox(
-        "BOM을 확인할 완성품번을 선택하세요 (최근 2주 이내 불출)",
-        ["선택 안 함"] + item_list,
-        key="common_bom_select_item",
-    )
+                            selected_item = st.selectbox(
+                                "BOM을 확인할 완성품번을 선택하세요 (최근 2주 이내 불출)",
+                                ["선택 안 함"] + item_list,
+                                key="common_bom_select_item",
+                            )
 
-    if selected_item != "선택 안 함":
-        # =========================
-        # 🔎 BOM 시트에서 선택한 완성품번의 자재 목록 조회
-        #   - A열: 품목코드(완성품번)
-        #   - C열: 자재 품번
-        #   - D열: 자재 품명  ✅ (중요)
-        #   - F열: 단위수량
-        # =========================
-        df_bom_all = df_bom_raw.copy()
-        cols = list(df_bom_all.columns)
+                            if selected_item != "선택 안 함":
+                                df_bom_all = df_bom_raw.copy()
+                                cols = list(df_bom_all.columns)
 
-        try:
-            bom_item_col = cols[excel_col_to_index("A")]  # 완성품번 (품목코드)
-            bom_part_col = cols[excel_col_to_index("C")]  # 자재 품번
-            bom_name_col = cols[excel_col_to_index("D")]  # ✅ 자재 품명 (D열)
-            bom_unit_col = cols[excel_col_to_index("F")]  # 단위수량
-        except Exception:
-            st.error("BOM 시트에서 필요한 열(A,C,D,F)을 찾지 못했습니다.")
-            st.stop()
+                                try:
+                                    bom_item_col = cols[excel_col_to_index("A")]
+                                    bom_part_col = cols[excel_col_to_index("C")]
+                                    bom_name_col = cols[excel_col_to_index("D")]  # ✅ 자재 품명 (D열)
+                                    bom_unit_col = cols[excel_col_to_index("F")]
+                                except Exception:
+                                    st.error("BOM 시트에서 필요한 열(A,C,D,F)을 찾지 못했습니다.")
+                                    st.stop()
 
-        df_bom_selected = df_bom_all[
-            df_bom_all[bom_item_col].astype(str) == str(selected_item)
-        ].copy()
+                                df_bom_selected = df_bom_all[
+                                    df_bom_all[bom_item_col].astype(str) == str(selected_item)
+                                ].copy()
 
-        if df_bom_selected.empty:
-            st.info("선택한 완성품번에 대한 BOM 자재 정보가 없습니다.")
-        else:
-            df_bom_selected = df_bom_selected[
-                [bom_part_col, bom_name_col, bom_unit_col]
-            ].drop_duplicates()
+                                if df_bom_selected.empty:
+                                    st.info("선택한 완성품번에 대한 BOM 자재 정보가 없습니다.")
+                                else:
+                                    df_bom_selected = df_bom_selected[
+                                        [bom_part_col, bom_name_col, bom_unit_col]
+                                    ].drop_duplicates()
 
-            df_bom_selected = df_bom_selected.rename(
-                columns={
-                    bom_part_col: "자재 품번",
-                    bom_name_col: "자재 품명",
-                    bom_unit_col: "단위수량",
-                }
-            )
+                                    df_bom_selected = df_bom_selected.rename(
+                                        columns={
+                                            bom_part_col: "자재 품번",
+                                            bom_name_col: "자재 품명",
+                                            bom_unit_col: "단위수량",
+                                        }
+                                    )
 
-            st.markdown(
-                f"### 🧾 BOM 자재 목록 (완성품번: **{selected_item}**)"
-            )
+                                    st.markdown(
+                                        f"### 🧾 BOM 자재 목록 (완성품번: **{selected_item}**)"
+                                    )
 
-            col_left, col_right = st.columns([1, 1])
+                                    col_left, col_right = st.columns([1, 1])
 
-            with col_left:
-                st.dataframe(
-                    df_bom_selected.reset_index(drop=True),
-                    use_container_width=True,
-                )
+                                    with col_left:
+                                        st.dataframe(
+                                            df_bom_selected.reset_index(drop=True),
+                                            use_container_width=True,
+                                        )
 
 # ============================================================
 # 🏷 6. 라벨 수량 계산 탭
