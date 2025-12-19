@@ -3233,9 +3233,58 @@ else:
     )
 
     if selected_item != "선택 안 함":
-        # 👉 여기 아래에 BOM 조회 로직 그대로 연결
-        # (A열 품목코드 == selected_item)
-        ...
+        # =========================
+        # 🔎 BOM 시트에서 선택한 완성품번의 자재 목록 조회
+        #   - 품목코드(A열) == selected_item
+        #   - 품번(C열), 품명(D열), 단위수량(F열)
+        # =========================
+        df_bom_all = df_bom_raw.copy()
+
+        bom_item_col = pick_col(df_bom_all, "A", ["품목코드"])
+        bom_part_col = pick_col(df_bom_all, "C", ["품번"])
+        bom_name_col = pick_col(df_bom_all, "D", ["품명", "품명_1"])
+        bom_unit_col = pick_col(df_bom_all, "F", ["단위수량"])
+
+        if not all([bom_item_col, bom_part_col]):
+            st.error("BOM 시트에서 품목코드(A) 또는 품번(C) 컬럼을 찾지 못했습니다.")
+        else:
+            # 선택한 완성품번 기준 BOM 필터
+            df_bom_selected = df_bom_all[
+                df_bom_all[bom_item_col].astype(str) == str(selected_item)
+            ].copy()
+
+            if df_bom_selected.empty:
+                st.info("선택한 완성품번에 대한 BOM 자재 정보가 없습니다.")
+            else:
+                # 보여줄 컬럼 구성
+                show_cols = []
+
+                if bom_part_col:
+                    show_cols.append(bom_part_col)
+                if bom_name_col:
+                    show_cols.append(bom_name_col)
+                if bom_unit_col:
+                    show_cols.append(bom_unit_col)
+
+                df_bom_selected = df_bom_selected[show_cols].drop_duplicates()
+
+                # 컬럼명 정리
+                rename_map = {}
+                if bom_part_col:
+                    rename_map[bom_part_col] = "자재 품번"
+                if bom_name_col:
+                    rename_map[bom_name_col] = "자재 품명"
+                if bom_unit_col:
+                    rename_map[bom_unit_col] = "단위수량"
+
+                df_bom_selected.rename(columns=rename_map, inplace=True)
+
+                st.markdown(f"### 🧾 BOM 자재 목록 (완성품번: **{selected_item}**)")
+
+                st.dataframe(
+                    df_bom_selected.reset_index(drop=True),
+                    use_container_width=True,
+                )
 
 
 # ============================================================
