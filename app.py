@@ -1986,7 +1986,8 @@ if menu == "🔍 수주 찾기":
                                 ].drop(columns=["수주번호_str"])
 
                                 if df_job_filtered.empty:
-                                    ...
+                                    st.info("해당 수주번호로 작업지시 시트에서 지시번호를 찾지 못했습니다.")
+                                   
                                 else:
                                     # 중복 제거
                                     subset_cols = ["수주번호", "지시번호", "품명"]
