@@ -3275,10 +3275,13 @@ else:
                 f"### 🧾 BOM 자재 목록 (완성품번: **{selected_item}**)"
             )
 
-            st.dataframe(
-                df_bom_selected.reset_index(drop=True),
-                use_container_width=True,
-            )
+            col_left, col_right = st.columns([1, 1])
+
+            with col_left:
+                st.dataframe(
+                    df_bom_selected.reset_index(drop=True),
+                    use_container_width=True,
+                )
 
 # ============================================================
 # 🏷 6. 라벨 수량 계산 탭
